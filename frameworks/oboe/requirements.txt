@@ -1,1 +1,4 @@
+mkl
+scikit-learn
+tensorly
 cvxpy>=1.0,<2.0
