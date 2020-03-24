@@ -50,6 +50,10 @@ autosklearn:
   version: '0.5.1'
   project: https://automl.github.io/auto-sklearn/stable/
 
+autoPyTorch:
+  version: '0.0.2'
+  project: https://github.com/automl/Auto-PyTorch/
+
 AutoWEKA:
   version: '2.6'
   project: https://www.cs.ubc.ca/labs/beta/Projects/autoweka/
