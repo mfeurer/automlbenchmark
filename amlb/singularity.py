@@ -8,9 +8,6 @@ import logging
 import os
 import re
 
-from spython.main.parse.parsers import DockerParser
-from spython.main.parse.writers import get_writer
-
 from .benchmark import Benchmark, SetupMode
 from .errors import InvalidStateError
 from .job import Job
@@ -31,7 +28,7 @@ class SingularityBenchmark(Benchmark):
         di = framework_def.docker_image
         if branch is None:
             branch = rget().project_info.branch
-        return "{author}-{image}:{tag}".format(
+        return "{author}-{image}-{tag}".format(
             author=di.author,
             image=di.image if di.image else framework_def.name.lower(),
             tag=re.sub(r"([^\w.-])", '.',
@@ -58,24 +55,18 @@ class SingularityBenchmark(Benchmark):
             return
 
         if mode == SetupMode.auto and self._singularity_image_exists():
+            log.info("Pre-existing SIF file found. Skip build...")
             return
 
-        # We generate a Dockerfile and translate it to singularity
         custom_commands = self.framework_module.singularity_commands(
             self.framework_def.setup_args,
             setup_cmd=self.framework_def._setup_cmd
         ) if hasattr(self.framework_module, 'singularity_commands') else ""
 
-        self._generate_docker_script(custom_commands)
-        parser=DockerParser(self._docker_script)
-        SingularityWriter = get_writer('singularity')
-        writer = SingularityWriter(parser.recipe)
-        with open(self._singularity_script, "w") as text_file:
-            text_file.write(writer.convert())
+        self._generate_singularity_script(custom_commands)
 
         self._build_singularity_image(cache=(mode != SetupMode.force))
         if upload:
-            raise Exception("No hub support as in docker: https://github.com/singularityhub/singularityhub.github.io/issues/112")
             self._upload_singularity_image()
 
     def cleanup(self):
@@ -102,7 +93,7 @@ class SingularityBenchmark(Benchmark):
         folds = [] if folds is None else [str(f) for f in folds]
 
         def _run():
-            self._start_singularity("{framework} {benchmark} {constraint} {task_param} {folds_param} -Xseed={seed}".format(
+            self._start_singularity("{benchmark} {constraint} {task_param} {folds_param} -Xseed={seed}".format(
                 framework=self.framework_name,
                 benchmark=self.benchmark_name,
                 constraint=self.constraint_name,
@@ -128,7 +119,7 @@ class SingularityBenchmark(Benchmark):
         script_extra_params = ""
         inst_name = self.sid
         cmd = (
-            "singularity run {options} "
+            "singularity run --writable --fakeroot {options} "
             "-B {input}:/input -B {output}:/output -B {custom}:/custom "
             "{image} {params} -i /input -o /output -u /custom -s skip -Xrun_mode=singularity {extra_params}"
         ).format(
@@ -155,10 +146,6 @@ class SingularityBenchmark(Benchmark):
                 raise
 
     @property
-    def _docker_script(self):
-        return os.path.join(self._framework_dir, 'Dockerfile')
-
-    @property
     def _singularity_script(self):
         return os.path.join(self._framework_dir, 'Singularityfile')
 
@@ -168,15 +155,22 @@ class SingularityBenchmark(Benchmark):
 
     @property
     def _singularity_image(self):
-        return os.path.join(self._framework_dir, self._singularity_image_name)
+        return os.path.join("/tmp", self._singularity_image_name )
+        return os.path.join(self._framework_dir, self._singularity_image_name + ".sif")
 
     def _singularity_image_exists(self):
-        # In comparisson to Docker, the singularity image is just a sif file
+        # In comparisson to Docker, the singularity image is just a file
         if os.path.exists(self._singularity_image):
             log.debug("Singularity image found on: %s", self._singularity_image)
             return True
-        else
-            return False
+        else:
+
+            try:
+                run_cmd("singularity pull {image}.sif {library}".format(image=self._singularity_image, library=rconfig().singularity.library))
+                run_cmd("singularity build --fakeroot --sandbox {image} {image}.sif".format(image=self._singularity_image, library=rconfig().singularity.library))
+                return True
+            except:
+                pass
         return False
 
     def _build_singularity_image(self, cache=True):
@@ -211,65 +205,97 @@ Do you still want to build the singularity image? (y/[n]) """).lower() or 'n'
                         "Please switch to the expected tagged branch before building the singularity image.".format(tag)
                     )
 
-        if not os.path.exists('~/.singularity/sylabs-token'):
+        if not os.path.exists(os.path.expanduser('~/.singularity/sylabs-token')):
             raise Exception("Singularity generation requires following https://cloud.sylabs.io/builder")
 
         log.info(f"Building singularity image {self._singularity_image}.")
-        run_cmd("singularity build --remote {options} {container} {script} .".format(
+        # Remote last too much so that jobs get killed 5e7a4bc490b784c737d095a5 build exceeded max build timeFATAL:   While performing build: build has not completed
+        run_cmd("singularity build --fakeroot --sandbox {options} {container} {script}".format(
+            options="" if cache else "--disable-cache",
+            container=self._singularity_image,
+            script=self._singularity_script
+        ), _live_output_=True)
+        log.info(f"Successfully built singularity image {self._singularity_image}.")
+        # Create also the container for push
+        run_cmd("singularity build --fakeroot {options} {container}.sif {container}".format(
             options="" if cache else "--disable-cache",
             container=self._singularity_image,
             script=self._singularity_script
         ), _live_output_=True)
         log.info(f"Successfully built singularity image {self._singularity_image}.")
 
+
     def _upload_singularity_image(self):
+        image = self._singularity_image_name
+        library=rconfig().singularity.library
+        log.info(f"Publishing Singularity image {image}.")
+        run_cmd(f"singularity login && singularity push {self._singularity_image}.sif {library}")
+        log.info(f"Successfully published singularity image {image}.")
+
+
         raise NotImplementedError
 
-    def _generate_docker_script(self, custom_commands):
-        docker_content = """FROM ubuntu:18.04
+    def _generate_singularity_script(self, custom_commands):
+        singularity_content="""Bootstrap: docker
+From: ubuntu:18.04
+%files
+. /bench/
+%post
 
-ENV DEBIAN_FRONTEND noninteractive
-RUN apt-get update
-RUN apt-get -y install apt-utils dialog locales
-RUN apt-get -y install curl wget unzip git
-RUN apt-get -y install python3 python3-pip python3-venv
-RUN pip3 install -U pip
+DEBIAN_FRONTEND=noninteractive
+apt-get update
+apt-get -y install apt-utils dialog locales
+apt-get -y install curl wget unzip git
+apt-get -y install python3 python3-pip python3-venv
+pip3 install -U pip
 
 # aliases for the python system
-ENV SPIP pip3
-ENV SPY python3
+SPIP=pip3
+SPY=python3
 
 # Enforce UTF-8 encoding
-ENV PYTHONUTF8 1
-ENV PYTHONIOENCODING utf-8
+PYTHONUTF8=1
+PYTHONIOENCODING=utf-8
 # RUN locale-gen en-US.UTF-8
-ENV LANG C.UTF-8
-ENV LC_ALL C.UTF-8
+LANG=C.UTF-8
+LC_ALL=C.UTF-8
 
-WORKDIR /bench
+cd /bench
 
 # We create a virtual environment so that AutoML systems may use their preferred versions of
 # packages that we need to data pre- and postprocessing without breaking it.
-RUN $SPY -m venv venv
-ENV PIP /bench/venv/bin/pip3
-ENV PY /bench/venv/bin/python3 -W ignore
+$SPY -m venv venv
+PIP=/bench/venv/bin/pip3
+PY=/bench/venv/bin/python3
 #RUN $PIP install -U pip=={pip_version}
-RUN $PIP install -U pip
+$PIP install -U pip
 
-VOLUME /input
-VOLUME /output
-VOLUME /custom
+mkdir /input
+mkdir /output
+mkdir /custom
 
 # Add the AutoML system except files listed in .dockerignore (could also use git clone directly?)
-ADD . /bench/
 
-RUN xargs -L 1 $PIP install --no-cache-dir < requirements.txt
+xargs -L 1 $PIP install --no-cache-dir < requirements.txt
 
 {custom_commands}
 
-# https://docs.docker.com/engine/reference/builder/#entrypoint
-ENTRYPOINT ["/bin/bash", "-c", "$PY {script} $0 $*"]
-CMD ["{framework}", "test"]
+%environment
+export DEBIAN_FRONTEND=noninteractive
+export SPIP=pip3
+export SPY=python3
+export PYTHONUTF8=1
+export PYTHONIOENCODING=utf-8
+export LANG=C.UTF-8
+export LC_ALL=C.UTF-8
+export PIP=/bench/venv/bin/pip3
+export PY=/bench/venv/bin/python3
+%runscript
+cd /bench
+exec /bin/bash -c "$PY {script} {framework} "$@""
+%startscript
+cd /bench
+exec /bin/bash -c "$PY {script} {framework} "$@""
 
 """.format(
             custom_commands=custom_commands.format(**dict(setup=dir_of(os.path.join(self._framework_dir, "setup/"),
@@ -281,6 +307,7 @@ CMD ["{framework}", "test"]
             script=rconfig().script,
             user=rconfig().user_dir,
         )
-        with open(self._docker_script, 'w') as file:
-            file.write(docker_content)
+
+        with open(self._singularity_script, 'w') as file:
+            file.write(singularity_content)
 

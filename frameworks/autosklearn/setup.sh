@@ -4,6 +4,6 @@ HERE=$(dirname "$0")
 if [[ -x "$(command -v apt-get)" ]]; then
     SUDO apt-get install -y build-essential swig
 fi
-#curl https://raw.githubusercontent.com/automl/auto-sklearn/master/requirements.txt | sed '/^$/d' | while read -r i; do PIP install "$i"; done
+curl https://raw.githubusercontent.com/automl/auto-sklearn/master/requirements.txt | sed '/^$/d' | while read -r i; do PIP install "$i"; done
 PIP install --no-cache-dir -r $HERE/requirements.txt
 
