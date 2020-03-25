@@ -119,9 +119,9 @@ class SingularityBenchmark(Benchmark):
         script_extra_params = ""
         inst_name = self.sid
         cmd = (
-            "singularity run --writable --fakeroot {options} "
+            "singularity run {options} "
             "-B {input}:/input -B {output}:/output -B {custom}:/custom "
-            "{image} {params} -i /input -o /output -u /custom -s skip -Xrun_mode=singularity {extra_params}"
+            "{image} \"{params} -i /input -o /output -u /custom -s skip -Xrun_mode=singularity {extra_params}\""
         ).format(
             name=inst_name,
             options=rconfig().singularity.run_extra_options,
@@ -155,7 +155,6 @@ class SingularityBenchmark(Benchmark):
 
     @property
     def _singularity_image(self):
-        return os.path.join("/tmp", self._singularity_image_name )
         return os.path.join(self._framework_dir, self._singularity_image_name + ".sif")
 
     def _singularity_image_exists(self):
@@ -166,8 +165,11 @@ class SingularityBenchmark(Benchmark):
         else:
 
             try:
-                run_cmd("singularity pull {image}.sif {library}".format(image=self._singularity_image, library=rconfig().singularity.library))
-                run_cmd("singularity build --fakeroot --sandbox {image} {image}.sif".format(image=self._singularity_image, library=rconfig().singularity.library))
+                run_cmd("singularity pull {image} library://{library}/{image_name}:latest".format(
+                    image=self._singularity_image,
+                    image_name=os.path.basename(self._singularity_image),
+                    library=rconfig().singularity.library)
+                )
                 return True
             except:
                 pass
@@ -205,23 +207,14 @@ Do you still want to build the singularity image? (y/[n]) """).lower() or 'n'
                         "Please switch to the expected tagged branch before building the singularity image.".format(tag)
                     )
 
-        if not os.path.exists(os.path.expanduser('~/.singularity/sylabs-token')):
-            raise Exception("Singularity generation requires following https://cloud.sylabs.io/builder")
-
         log.info(f"Building singularity image {self._singularity_image}.")
         # Remote last too much so that jobs get killed 5e7a4bc490b784c737d095a5 build exceeded max build timeFATAL:   While performing build: build has not completed
-        run_cmd("singularity build --fakeroot --sandbox {options} {container} {script}".format(
+        run_cmd("sudo singularity build {options} {container} {script}".format(
             options="" if cache else "--disable-cache",
             container=self._singularity_image,
             script=self._singularity_script
         ), _live_output_=True)
-        log.info(f"Successfully built singularity image {self._singularity_image}.")
         # Create also the container for push
-        run_cmd("singularity build --fakeroot {options} {container}.sif {container}".format(
-            options="" if cache else "--disable-cache",
-            container=self._singularity_image,
-            script=self._singularity_script
-        ), _live_output_=True)
         log.info(f"Successfully built singularity image {self._singularity_image}.")
 
 
@@ -229,7 +222,7 @@ Do you still want to build the singularity image? (y/[n]) """).lower() or 'n'
         image = self._singularity_image_name
         library=rconfig().singularity.library
         log.info(f"Publishing Singularity image {image}.")
-        run_cmd(f"singularity login && singularity push {self._singularity_image}.sif {library}")
+        run_cmd(f"singularity login && singularity push -U {self._singularity_image} library://{library}/{os.path.basename(self._singularity_image)}:latest")
         log.info(f"Successfully published singularity image {image}.")
 
 
@@ -292,10 +285,10 @@ export PIP=/bench/venv/bin/pip3
 export PY=/bench/venv/bin/python3
 %runscript
 cd /bench
-exec /bin/bash -c "$PY {script} {framework} "$@""
+exec /bin/bash -c "$PY {script} {framework} ""$@"
 %startscript
 cd /bench
-exec /bin/bash -c "$PY {script} {framework} "$@""
+exec /bin/bash -c "$PY {script} {framework} ""$@"
 
 """.format(
             custom_commands=custom_commands.format(**dict(setup=dir_of(os.path.join(self._framework_dir, "setup/"),
