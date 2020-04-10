@@ -14,8 +14,6 @@ from autoPyTorch import AutoNetClassification, AutoNetRegression
 from frameworks.shared.callee import call_run, result, Timer, touch
 from utils import system_memory_mb
 
-from encoder import Encoder
-
 
 log = logging.getLogger(__name__)
 
@@ -83,6 +81,7 @@ def run(dataset, config):
     is_classification = config.type == 'classification'
     autonet = AutoNetClassification if is_classification else AutoNetRegression
     auto_pytorch = autonet(
+        "tiny_cs",
         budget_type="time",
         min_budget=config.max_runtime_seconds//(2*3**2), # if eta=3, this should lead to 3 budgets
         max_budget=config.max_runtime_seconds//2,
@@ -101,18 +100,18 @@ def run(dataset, config):
     log.info("Predicting on the test set.")
     predictions = auto_pytorch.predict(X_test)
     if is_classification:
-        target_values_enc = dataset.target_values_enc
-        probabilities = Encoder('one-hot', target=False, encoded_type=float).fit(target_values_enc).transform(predictions)
+        probabilities = "predictions"  # encoding is handled by caller in `__init__.py`
     else:
         probabilities = None
 
     save_artifacts(auto_pytorch, config)
+    print(f"probabilities={probabilities}")
     return result(output_file=config.output_predictions_file,
                   predictions=predictions,
                   truth=y_test,
                   probabilities=probabilities,
                   target_is_encoded=is_classification,
-                  models_count=len(autonet.get_pytorch_model()),
+                  models_count=len(auto_pytorch.get_pytorch_model()),
                   training_duration=training.duration)
 
 
@@ -133,3 +132,7 @@ def save_artifacts(autonet, config):
                 f.write(models_repr)
     except:
         log.debug("Error when saving artifacts.", exc_info=True)
+
+
+if __name__ == '__main__':
+    call_run(run)
