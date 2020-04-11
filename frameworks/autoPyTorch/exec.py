@@ -87,6 +87,8 @@ def run(dataset, config):
         max_budget=config.max_runtime_seconds//2,
         max_runtime=config.max_runtime_seconds,
         log_level='info',
+        result_logger_dir=config.output_dir,
+        working_dir=config.output_dir,
         use_pynisher=False,
         min_workers=n_jobs,
         memory_limit_mb=ml_memory_limit,
