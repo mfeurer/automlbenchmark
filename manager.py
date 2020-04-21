@@ -1,8 +1,12 @@
 import argparse
 import collections
 import os
+import subprocess
 
+import numpy as np
 import pandas as pd
+
+import yaml
 
 
 def generate_run_file(framework, benchmark, constrain, task, fold, force=False):
@@ -10,10 +14,9 @@ def generate_run_file(framework, benchmark, constrain, task, fold, force=False):
 
     run_file = f"results/{framework}_{benchmark}_{constrain}_{task}_{fold}.sh"
     if os.path.exists(run_file) and not force:
-        return
+        return run_file
 
-    with open(run_file, 'w') as f:
-        f.write(f"#!/bin/bash
+    command = f"""#!/bin/bash
 #Setup the run
 export PATH=/usr/local/kislurm/singularity-3.5/bin/:$PATH
 export SINGULARITY_TMPDIR=/home/riverav/tmp
@@ -29,41 +32,52 @@ export fold={fold}
 echo 'python runbenchmark.py {framework} {benchmark} {constrain} --task {task} --fold {fold} -m singularity'
 python runbenchmark.py {framework} {benchmark} {constrain} --task {task} --fold {fold} -m singularity
 echo 'Finished the run'
-"
-    )
+"""
+
+    with open(run_file, 'w') as f:
+        f.write(command)
     return run_file
 
-def get_task_from_benchmark(benchmarks)
+def get_task_from_benchmark(benchmarks):
     """Returns a dict with benchmark to task mapping"""
     task_from_benchmark = {}
 
     for benchmark in benchmarks:
         task_from_benchmark[benchmark] = []
         filename= os.path.join('resources','benchmarks', f"{benchmark}.yaml")
-        if os.path.exists(filename):
+        if not  os.path.exists(filename):
             raise Exception(f"File {filename} not found!")
         with open(filename ) as file:
             data = yaml.load(file, Loader=yaml.FullLoader)
 
         for task in data:
-            if task.name in ['__dummy-task', '__defaults__']:
+            if task['name'] in ['__dummy-task', '__defaults__']:
                 continue
-            task_from_benchmark[benchmark].append(task.name)
+            task_from_benchmark[benchmark].append(task['name'])
 
-def score(row, res_col='result'):
+    return task_from_benchmark
+
+
+def score(df, res_col='result'):
     """
     Get the results as the automlbenchmark team through https://github.com/openml/automlbenchmark/blob/master/reports/report/results.py
     return row[res_col] if row[res_col] in [row.auc, row.acc] else -row[res_col]
     """
     result = df['result'].iloc[0]
-    if result in [ df['auc'].iloc[0], df['acc'].iloc[0] ]
+    if result in [ df['auc'].iloc[0], df['acc'].iloc[0] ]:
         return result
     else:
         return -result
 
+
 def get_results(framework, benchmark, constrain, task, fold, force=False):
     result_file = 'results/results.csv'
+
+    if not os.path.exists(result_file):
+        return None
+
     df = pd.read_csv(result_file)
+    df["fold"] = pd.to_numeric(df["fold"])
     df = df[(df['framework']==framework) & (df['task']==task) & (df['fold']==fold)]
 
     # If no run return
@@ -101,11 +115,27 @@ def query_yes_no(question, default='no'):
             print("Please respond with 'yes' or 'no' (or 'y' or 'n').\n")
 
 
-def launch_run(run_file):
+def check_if_running(run_file):
+    name, ext = os.path.splitext(os.path.basename(run_file))
+    result = subprocess.run([
+        'squeue',
+        f"--format=\"%.50j\" --noheader -u {os.environ['USER']}"
+    ], stdout=subprocess.PIPE)
+    result = result.stdout.decode('utf-8')
+    for i, line in enumerate(result.splitlines()):
+        if name in line:
+            return True
+    return False
+
+
+def launch_run(run_file, partition):
     """Sends a job to sbatcht"""
-    name, ext = os.path.splitext(run_file)
+    name, ext = os.path.splitext(os.path.basename(run_file))
+    if check_if_running(run_file):
+        return
     returned_value = os.system(
-        "sbatch -p ml_cpu-ivy -c 5 --job-name {} -o {} {}".format(
+        "sbatch -p {} -c 5 --job-name {} -o {} {}".format(
+            partition,
             name,
             os.path.join('logs', name + '.out'),
             run_file,
@@ -127,11 +157,21 @@ def str2bool(v):
     else:
         raise argparse.ArgumentTypeError('Boolean value expected.')
 
+def is_number(s):
+    if s is None:
+        return False
+    try:
+        float(s)
+        return True
+    except ValueError:
+        return False
+
+
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description='Process some integers.')
+    parser = argparse.ArgumentParser(description='Manages the run of the benchmark')
     parser.add_argument(
         'framework',
-        choices=['tpot', 'H2OAutoML'],
+        choices=['TPOT', 'H2OAutoML'],
         help='What framework to manage'
     )
     parser.add_argument(
@@ -150,7 +190,25 @@ if __name__ == "__main__":
         help='What framework to manage'
     )
     parser.add_argument(
+        '--partition',
+        default='test_cpu-ivy',
+        help='What framework to manage'
+    )
+    parser.add_argument(
+        '--fold',
+        type=int,
+        help='What framework to manage'
+    )
+    parser.add_argument(
         '--force',
+        type=str2bool,
+        nargs='?',
+        const=True,
+        default=False,
+        help='Force everything-- Maybe use for a bad run'
+    )
+    parser.add_argument(
+        '--run',
         type=str2bool,
         nargs='?',
         const=True,
@@ -171,19 +229,38 @@ if __name__ == "__main__":
         tasks_from_benchmark = get_task_from_benchmark(benchmarks)
         for benchmark in benchmarks:
             if args.task in tasks_from_benchmark[benchmark]:
-                tasks[benchmark] = args.task
+                tasks[benchmark] = [args.task]
                 count +=1
+            else:
+                tasks[benchmark] = []
         if count != 1:
             raise Exception(f"For task={args.task} it was not uniquely defined for benchmark={benchmarks}({count})")
     else:
         tasks = get_task_from_benchmark(benchmarks)
 
+    if args.fold or args.fold == 0:
+        folds = [args.fold]
+    else :
+        folds = np.arange(10)
+
     # Get the task
     jobs = collections.defaultdict(dict)
+    total = 0
     for framework in frameworks:
+        jobs[framework] = dict()
+        print('_'*40)
+        print(f"\t\t{framework}")
+        print('_'*40)
         for benchmark in benchmarks:
+            jobs[framework][benchmark] = dict()
+            print('_'*40)
+            print(f"\tbenchmark={benchmark}")
             for task in tasks[benchmark]:
+                jobs[framework][benchmark][task] = dict()
+                print('_'*40)
+                print(f"\t\t task={task}")
                 for fold in folds:
+
                     # Check if the run files for this task exist
                     jobs[framework][benchmark][task]['run_file'] = generate_run_file(
                         framework=framework,
@@ -191,7 +268,7 @@ if __name__ == "__main__":
                         constrain=args.constrain,
                         task=task,
                         fold=fold,
-                        force=args.force
+                        force= False if not args.force else True,
                     )
 
                     # Check if there are results already
@@ -201,18 +278,39 @@ if __name__ == "__main__":
                         constrain=args.constrain,
                         task=task,
                         fold=fold,
-                        force=args.force
+                        force= False if not args.force else True,
                     )
 
-                    print(f"Returned = {jobs[framework][benchmark][task]['results']}")
-                    continue
+                    valid_result = is_number(jobs[framework][benchmark][task]['results'])
+                    status = 'Completed' if valid_result else 'N/A'
+                    if args.run:
+                        # Launch the run if it was not yet launched
+                        if jobs[framework][benchmark][task]['results'] is None or args.force:
+                            if check_if_running(jobs[framework][benchmark][task]['run_file']):
+                                status = 'Running'
+                            else:
+                                launch_run(
+                                    jobs[framework][benchmark][task]['run_file'],
+                                    partition=args.partition,
+                                )
+                                status = 'Launched'
+                        else:
+                            # If the run failed, then ask the user to relaunch
+                            if not valid_result:
+                                if check_if_running(jobs[framework][benchmark][task]['run_file']):
+                                    status = 'Running'
+                                else:
+                                    status = 'Failed'
+                                    if query_yes_no(f"For framework={framework} benchmark={benchmark} constrain={args.constrain} task={task} fold={fold} obtained: {jobs[framework][benchmark][task]['results']}. Do you want to relaunch this run?"):
+                                        launch_run(
+                                            jobs[framework][benchmark][task]['run_file'],
+                                            partition=args.partition,
+                                        )
+                                        status = 'Relaunched'
 
-                    # Launch the run if it was not yet launched
-                    if jobs[framework][benchmark][task]['results'] is None or args.force:
-                        launch_run(jobs[framework][benchmark][task]['run_file'])
-                    else:
-                        # If the run failed, then ask the user to relaunch
-                        if not  jobs[framework][benchmark][task]['results'].replace('.','',1).isdigit():
-                            if query_yes_no(f"For framework={framework} benchmark={benchmark} constrain={args.constrain} task={task} fold={fold} obtained: {jobs[framework][benchmark][task]['results']}. Do you want to relaunch this run?"):
-                                launch_run(jobs[framework][benchmark][task]['run_file'])
+                    print(f"\t\t\tFold:{fold} Status = {status} ({jobs[framework][benchmark][task]['results']})")
+                    total = total + 1
 
+print('_'*40)
+print(f" A total of {total} runs checked")
+print('_'*40)
