@@ -9,10 +9,10 @@ import pandas as pd
 import yaml
 
 
-def generate_run_file(framework, benchmark, constrain, task, fold, force=False):
+def generate_run_file(framework, benchmark, constraint, task, fold, force=False):
     """Generates a bash script for the sbatch command"""
 
-    run_file = f"results/{framework}_{benchmark}_{constrain}_{task}_{fold}.sh"
+    run_file = f"results/{framework}_{benchmark}_{constraint}_{task}_{fold}.sh"
     if os.path.exists(run_file) and not force:
         return run_file
 
@@ -26,11 +26,11 @@ cd /home/riverav/work/automlbenchmark
 # Config the run
 export framework={framework}
 export benchmark={benchmark}
-export constrain={constrain}
+export constraint={constraint}
 export task={task}
 export fold={fold}
-echo 'python runbenchmark.py {framework} {benchmark} {constrain} --task {task} --fold {fold} -m singularity'
-python runbenchmark.py {framework} {benchmark} {constrain} --task {task} --fold {fold} -m singularity
+echo 'python runbenchmark.py {framework} {benchmark} {constraint} --task {task} --fold {fold} -m singularity'
+python runbenchmark.py {framework} {benchmark} {constraint} --task {task} --fold {fold} -m singularity
 echo 'Finished the run'
 """
 
@@ -64,13 +64,22 @@ def score(df, res_col='result'):
     return row[res_col] if row[res_col] in [row.auc, row.acc] else -row[res_col]
     """
     result = df['result'].iloc[0]
-    if result in [ df['auc'].iloc[0], df['acc'].iloc[0] ]:
+    auc = df['auc'].iloc[0] if 'auc' in df else None
+    acc = df['acc'].iloc[0] if 'acc' in df else None
+    if result in [ auc, acc]:
         return result
     else:
         return -result
 
+def norm_score(framework, benchmark, constraint, task, fold, score):
+    zero = get_results('constantpredictor', benchmark, constraint, task, fold)
+    one = get_results('TunedRandomForest', benchmark, constraint, task, fold)
+    if zero is None or one is None or not is_number(score):
+        return score
+    return (score - zero) / (one - zero)
 
-def get_results(framework, benchmark, constrain, task, fold, force=False):
+
+def get_results(framework, benchmark, constraint, task, fold):
     result_file = 'results/results.csv'
 
     if not os.path.exists(result_file):
@@ -85,7 +94,7 @@ def get_results(framework, benchmark, constrain, task, fold, force=False):
         return None
 
     if df.shape[0] != 1:
-        print(f"-W-: More than 1 column ({df.shape[0]}) matched the criteria {framework} {benchmark} {constrain} {task} {fold}. Picking the first one: {df} ")
+        print(f"-W-: More than 1 column ({df.shape[0]}) matched the criteria {framework} {benchmark} {constraint} {task} {fold}. Picking the first one: {df} ")
 
     result = df['result'].iloc[0]
     if result is None or pd.isnull(result):
@@ -133,13 +142,15 @@ def launch_run(run_file, partition):
     name, ext = os.path.splitext(os.path.basename(run_file))
     if check_if_running(run_file):
         return
-    returned_value = os.system(
-        "sbatch -p {} -c 5 --job-name {} -o {} {}".format(
+    command = "sbatch -p {} -c 5 --job-name {} -o {} {}".format(
             partition,
             name,
             os.path.join('logs', name + '.out'),
             run_file,
         )
+    print(f"-I-: Running command={command}")
+    returned_value = os.system(
+        command
     )
     return returned_value
 
@@ -171,12 +182,11 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Manages the run of the benchmark')
     parser.add_argument(
         'framework',
-        choices=['TPOT', 'H2OAutoML'],
+        choices=['TPOT', 'H2OAutoML', 'constantpredictor', 'TunedRandomForest'],
         help='What framework to manage'
     )
     parser.add_argument(
         '--benchmark',
-        default='test',
         choices=['test', 'small', 'medium', 'large', 'validation'],
         help='What benchmark to run'
     )
@@ -185,7 +195,7 @@ if __name__ == "__main__":
         help='What specific task to run'
     )
     parser.add_argument(
-        '--constrain',
+        '--constraint',
         default='1h4c',
         help='What framework to manage'
     )
@@ -221,7 +231,8 @@ if __name__ == "__main__":
     if args.benchmark:
         benchmarks = [args.benchmark]
     else:
-        benchmarks = ['test', 'small', 'medium', 'large', 'validation']
+        #benchmarks = ['test', 'small', 'medium', 'large']
+        benchmarks = ['test', 'small']
 
     if args.task:
         tasks = {}
@@ -265,7 +276,7 @@ if __name__ == "__main__":
                     jobs[framework][benchmark][task]['run_file'] = generate_run_file(
                         framework=framework,
                         benchmark=benchmark,
-                        constrain=args.constrain,
+                        constraint=args.constraint,
                         task=task,
                         fold=fold,
                         force= False if not args.force else True,
@@ -275,10 +286,19 @@ if __name__ == "__main__":
                     jobs[framework][benchmark][task]['results'] = get_results(
                         framework=framework,
                         benchmark=benchmark,
-                        constrain=args.constrain,
+                        constraint=args.constraint,
                         task=task,
                         fold=fold,
-                        force= False if not args.force else True,
+                    )
+
+                    # Normalize the score as in the paper
+                    jobs[framework][benchmark][task]['norm_score'] = norm_score(
+                        framework=framework,
+                        benchmark=benchmark,
+                        constraint=args.constraint,
+                        task=task,
+                        fold=fold,
+                        score=jobs[framework][benchmark][task]['results'],
                     )
 
                     valid_result = is_number(jobs[framework][benchmark][task]['results'])
@@ -301,7 +321,7 @@ if __name__ == "__main__":
                                     status = 'Running'
                                 else:
                                     status = 'Failed'
-                                    if query_yes_no(f"For framework={framework} benchmark={benchmark} constrain={args.constrain} task={task} fold={fold} obtained: {jobs[framework][benchmark][task]['results']}. Do you want to relaunch this run?"):
+                                    if query_yes_no(f"For framework={framework} benchmark={benchmark} constraint={args.constraint} task={task} fold={fold} obtained: {jobs[framework][benchmark][task]['results']}. Do you want to relaunch this run?"):
                                         launch_run(
                                             jobs[framework][benchmark][task]['run_file'],
                                             partition=args.partition,
