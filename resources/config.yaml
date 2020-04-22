@@ -62,7 +62,8 @@ container: &container
   run_extra_options: ''
   image:      # set this value through -Xcontainer.image=my-image to run benchmark with a specific image
   image_defaults:
-    author: automlbenchmark
+    author: franchuterivera
+    #author: automlbenchmark
     image:    # set by container impl based on framework name, lowercase
     tag:      # set by container impl based on framework version
 

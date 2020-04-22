@@ -9,8 +9,16 @@ HERE=$(dirname "$0")
 if [[ -x "$(command -v apt-get)" ]]; then
     SUDO apt-get install -y build-essential swig
 fi
+TARGET_DIR="$HERE/lib/auto-sklearn"
+if [[ ! -e "$TARGET_DIR" ]]; then
+    git clone https://github.com/automl/auto-sklearn.git $TARGET_DIR
+    cd auto-sklearn
+    git checkout development
+    cd ..
+fi
 # by passing the module directory to `setup.sh`, it tells it to automatically create a virtual env under the current module.
 # this virtual env is then used to run the exec.py only, and can be configured here using `PIP` and `PY` commands.
 #curl "https://raw.githubusercontent.com/automl/auto-sklearn/${VERSION}/requirements.txt" | sed '/^$/d' | while read -r i; do PIP install "$i"; done
 #PIP install --no-cache-dir -r "https://raw.githubusercontent.com/automl/auto-sklearn/${VERSION}/requirements.txt"
-PIP install --no-cache-dir -r $HERE/requirements.txt
+PIP install --no-cache-dir -r $TARGET_DIR/requirements.txt
+PIP install --no-cache-dir -e $TARGET_DIR
