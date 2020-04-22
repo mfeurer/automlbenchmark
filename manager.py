@@ -1,5 +1,6 @@
 import argparse
 import collections
+import mmap
 import os
 import subprocess
 
@@ -119,9 +120,25 @@ def query_yes_no(question, default='no'):
             if default is not None and resp == '':
                 return default == 'yes'
             else:
-                return distutils.util.strtobool(resp)
+                return str2bool(resp)
         except ValueError:
             print("Please respond with 'yes' or 'no' (or 'y' or 'n').\n")
+
+def check_if_crashed(run_file):
+    """Checks if a run crashed from the batch log file"""
+    name, ext = os.path.splitext(os.path.basename(run_file))
+    logfile = os.path.join('logs', name + '.out')
+    if not os.path.exists(logfile):
+        return False
+
+    causes = [
+        'error: Exceeded job memory limit'
+    ]
+    with open(logfile, 'rb', 0) as file, mmap.mmap(file.fileno(), 0, access=mmap.ACCESS_READ) as s:
+        for cause in causes:
+            if s.find(cause.encode()) != -1:
+                return cause
+    return 'UNDEFINED CAUSE'
 
 
 def check_if_running(run_file):
@@ -201,7 +218,7 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         '--partition',
-        default='test_cpu-ivy',
+        default='ml_cpu-ivy',
         help='What framework to manage'
     )
     parser.add_argument(
@@ -301,8 +318,19 @@ if __name__ == "__main__":
                         score=jobs[framework][benchmark][task]['results'],
                     )
 
+                    # Show status to see what is going on
                     valid_result = is_number(jobs[framework][benchmark][task]['results'])
-                    status = 'Completed' if valid_result else 'N/A'
+                    if valid_result:
+                        status = 'Completed'
+                    elif check_if_running(jobs[framework][benchmark][task]['run_file']):
+                        status = 'Running'
+                    else:
+                        status = 'N/A'
+                        crashed = check_if_crashed(jobs[framework][benchmark][task]['run_file'])
+                        if crashed:
+                            jobs[framework][benchmark][task]['results'] = crashed
+                            status = 'Chrashed'
+
                     if args.run:
                         # Launch the run if it was not yet launched
                         if jobs[framework][benchmark][task]['results'] is None or args.force:
