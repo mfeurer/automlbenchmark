@@ -53,6 +53,12 @@ def run(dataset, config):
 
     training_params = {k: v for k, v in config.framework_params.items() if not k.startswith('_')}
 
+    if config.cmd_line_overwrite is not None:
+        print(config.cmd_line_overwrite)
+        training_params.update(config.cmd_line_overwrite)
+    for k,v in training_params.items():
+        log.info(f"training_params {k}->{v}")
+
     n_jobs = config.framework_params.get('_n_jobs', config.cores)
     ml_memory_limit = config.framework_params.get('_ml_memory_limit', 'auto')
     ensemble_memory_limit = config.framework_params.get('_ensemble_memory_limit', 'auto')

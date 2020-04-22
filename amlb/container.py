@@ -39,19 +39,20 @@ class ContainerBenchmark(Benchmark):
         return f"{author}/{image}:{tag}"
 
     @abstractmethod
-    def __init__(self, framework_name, benchmark_name, constraint_name):
+    def __init__(self, framework_name, benchmark_name, constraint_name, cmd_line_overwrite):
         """
 
         :param framework_name:
         :param benchmark_name:
         :param constraint_name:
         """
-        super().__init__(framework_name, benchmark_name, constraint_name)
+        super().__init__(framework_name, benchmark_name, constraint_name, cmd_line_overwrite)
         self._custom_image_name = rconfig().container.image
         self.minimize_instances = rconfig().container.minimize_instances
         self.container_name = None
         self.force_branch = rconfig().container.force_branch
         self.custom_commands = ""
+        self.cmd_line_overwrite = cmd_line_overwrite
 
     def _container_image_name(self, branch=None):
         return self.image_name(self.framework_def, branch)
@@ -97,14 +98,20 @@ class ContainerBenchmark(Benchmark):
         folds = [] if folds is None else [str(f) for f in folds]
 
         def _run():
-            self._start_container("{framework} {benchmark} {constraint} {task_param} {folds_param} -Xseed={seed}".format(
-                framework=self.framework_name,
-                benchmark=self.benchmark_name,
-                constraint=self.constraint_name,
-                task_param='' if len(task_names) == 0 else ' '.join(['-t']+task_names),
-                folds_param='' if len(folds) == 0 else ' '.join(['-f']+folds),
-                seed=rget().seed(int(folds[0])) if len(folds) == 1 else rconfig().seed,
-            ))
+            script_extra_params = "" if self.cmd_line_overwrite is None else f"--cmd_line_overwrite '{self.cmd_line_overwrite}'"
+            self._start_container(
+                "{framework} {benchmark} {constraint} {task_param} {folds_param} -Xseed={seed}".format(
+                    framework=self.framework_name,
+                    benchmark=self.benchmark_name,
+                    constraint=self.constraint_name,
+                    task_param='' if len(task_names) == 0 else ' '.join(['-t']+task_names),
+                    folds_param='' if len(folds) == 0 else ' '.join(['-f']+folds),
+                    seed=rget().seed(int(folds[0])) if len(folds) == 1 else rconfig().seed,
+                ),
+                "{}".format(
+                    script_extra_params
+                )
+            )
             # TODO: would be nice to reload generated scores and return them
 
         job = Job('_'.join([self.container_name,

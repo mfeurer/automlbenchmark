@@ -62,6 +62,21 @@ class NS:
     def __repr__(self):
         return repr(self.__dict__)
 
+    def __iter__(self):
+        return iter(self.__dict__)
+
+    def __getitem__(self, index):
+        return self.__dict__[index]
+
+    def keys(self):
+        return self.__dict__.keys()
+
+    def items(self):
+        return self.__dict__.items()
+
+    def values(self):
+        return self.__dict__.values()
+
 
 class Timer:
 

@@ -21,14 +21,14 @@ class DockerBenchmark(ContainerBenchmark):
     an extension of ContainerBenchmark to run benchmarks inside docker.
     """
 
-    def __init__(self, framework_name, benchmark_name, constraint_name):
+    def __init__(self, framework_name, benchmark_name, constraint_name, cmd_line_overwrite):
         """
 
         :param framework_name:
         :param benchmark_name:
         :param constraint_name:
         """
-        super().__init__(framework_name, benchmark_name, constraint_name)
+        super().__init__(framework_name, benchmark_name, constraint_name, cmd_line_overwrite)
         self._custom_image_name = rconfig().docker.image
         self.minimize_instances = rconfig().docker.minimize_instances
         self.container_name = 'docker'
@@ -42,14 +42,13 @@ class DockerBenchmark(ContainerBenchmark):
     def _script(self):
         return os.path.join(self._framework_dir, 'Dockerfile')
 
-    def _start_container(self, script_params=""):
+    def _start_container(self, script_params="", script_extra_params = ""):
         """Implementes the container run method"""
         in_dir = rconfig().input_dir
         out_dir = rconfig().output_dir
         custom_dir = rconfig().user_dir
         for d in [in_dir, out_dir, custom_dir]:
             touch(d, as_dir=True)
-        script_extra_params = ""
         inst_name = self.sid
         cmd = (
             "docker run --name {name} {options} "

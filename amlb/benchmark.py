@@ -10,6 +10,7 @@
 
 from copy import copy
 from enum import Enum
+import json
 from importlib import import_module, invalidate_caches
 import logging
 import math
@@ -51,7 +52,7 @@ class Benchmark:
 
     data_loader = None
 
-    def __init__(self, framework_name: str, benchmark_name: str, constraint_name: str):
+    def __init__(self, framework_name: str, benchmark_name: str, constraint_name: str, cmd_line_overwrite):
         """
 
         :param framework_name:
@@ -65,6 +66,8 @@ class Benchmark:
             self.parallel_jobs = 1
             self.sid = None
             return
+
+        self.cmd_line_overwrite=json.loads(cmd_line_overwrite) if cmd_line_overwrite is not None else None
 
         self.framework_def, self.framework_name = rget().framework_definition(framework_name)
         log.debug("Using framework definition: %s.", self.framework_def)
@@ -215,7 +218,7 @@ class Benchmark:
             log.warning(f"Fold value {fold} is out of range for task {task_def.name}, skipping it.")
             return
 
-        return BenchmarkTask(self, task_def, fold).as_job(self.framework_module, self.framework_name)
+        return BenchmarkTask(self, task_def, fold, self.cmd_line_overwrite).as_job(self.framework_module, self.framework_name)
 
     def _process_results(self, results, task_name=None):
         scores = list(filter(None, flatten([res.result for res in results])))
@@ -270,7 +273,7 @@ class TaskConfig:
 
     def __init__(self, name, fold, metrics, seed,
                  max_runtime_seconds, cores, max_mem_size_mb, min_vol_size_mb,
-                 input_dir, output_dir):
+                 input_dir, output_dir, cmd_line_overwrite=None):
         self.framework = None
         self.framework_params = None
         self.type = None
@@ -286,6 +289,7 @@ class TaskConfig:
         self.input_dir = input_dir
         self.output_dir = output_dir
         self.output_predictions_file = os.path.join(output_dir, "predictions.csv")
+        self.cmd_line_overwrite = cmd_line_overwrite
 
     def __json__(self):
         return self.__dict__
@@ -321,7 +325,7 @@ class TaskConfig:
 
 class BenchmarkTask:
 
-    def __init__(self, benchmark: Benchmark, task_def, fold):
+    def __init__(self, benchmark: Benchmark, task_def, fold, cmd_line_overwrite=None):
         """
 
         :param task_def:
@@ -341,6 +345,7 @@ class BenchmarkTask:
             min_vol_size_mb=task_def.min_vol_size_mb,
             input_dir=rconfig().input_dir,
             output_dir=benchmark.output_dirs.session,
+            cmd_line_overwrite=cmd_line_overwrite,
         )
         # allowing to override some task parameters through command line, e.g.: -Xt.max_runtime_seconds=60
         if rconfig()['t'] is not None:

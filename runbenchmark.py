@@ -44,6 +44,7 @@ parser.add_argument('-k', '--keep-scores', type=str2bool, metavar='true|false', 
 parser.add_argument('--profiling', nargs='?', const=True, default=False, help=argparse.SUPPRESS)
 parser.add_argument('--session', type=str, default=None, help=argparse.SUPPRESS)
 parser.add_argument('-X', '--extra', default=[], action='append', help=argparse.SUPPRESS)
+parser.add_argument('--cmd_line_overwrite', default=None, help="Allows the user to pass extra command line arguments to a framework")
 # group = parser.add_mutually_exclusive_group()
 # group.add_argument('--keep-scores', dest='keep_scores', action='store_true',
 #                    help="Set to true [default] to save/add scores in output directory")
@@ -106,13 +107,13 @@ amlb.resources.from_configs(config, config_user, config_args)
 
 try:
     if args.mode == 'local':
-        bench = amlb.Benchmark(args.framework, args.benchmark, args.constraint)
+        bench = amlb.Benchmark(args.framework, args.benchmark, args.constraint, args.cmd_line_overwrite)
     elif args.mode == 'docker':
-        bench = amlb.DockerBenchmark(args.framework, args.benchmark, args.constraint)
+        bench = amlb.DockerBenchmark(args.framework, args.benchmark, args.constraint, args.cmd_line_overwrite)
     elif args.mode == 'singularity':
-        bench = amlb.SingularityBenchmark(args.framework, args.benchmark, args.constraint)
+        bench = amlb.SingularityBenchmark(args.framework, args.benchmark, args.constraint, args.cmd_line_overwrite)
     elif args.mode == 'aws':
-        bench = amlb.AWSBenchmark(args.framework, args.benchmark, args.constraint)
+        bench = amlb.AWSBenchmark(args.framework, args.benchmark, args.constraint, args.cmd_line_overwrite)
         # bench = amlb.AWSBenchmark(args.framework, args.benchmark, args.constraint, region=args.region)
     # elif args.mode == "aws-remote":
     #     bench = amlb.AWSRemoteBenchmark(args.framework, args.benchmark, args.constraint, region=args.region)
