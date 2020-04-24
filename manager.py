@@ -2,6 +2,7 @@ import argparse
 import collections
 import mmap
 import os
+import time
 import subprocess
 
 import numpy as np
@@ -19,6 +20,7 @@ def generate_run_file(framework, benchmark, constraint, task, fold, force=False)
 
     command = f"""#!/bin/bash
 #Setup the run
+echo "Running on $HOSTNAME"
 export PATH=/usr/local/kislurm/singularity-3.5/bin/:$PATH
 export SINGULARITY_TMPDIR=/home/riverav/tmp
 source /home/riverav/work/venv/bin/activate
@@ -132,7 +134,8 @@ def check_if_crashed(run_file):
         return False
 
     causes = [
-        'error: Exceeded job memory limit'
+        'error: Exceeded job memory limit',
+        'DUE TO TIME LIMIT'
     ]
     with open(logfile, 'rb', 0) as file, mmap.mmap(file.fileno(), 0, access=mmap.ACCESS_READ) as s:
         for cause in causes:
@@ -153,6 +156,69 @@ def check_if_running(run_file):
             return True
     return False
 
+
+def get_node(partition):
+    """
+    Gets a free node to be able to run the run without HTTP errors
+    PARTITION                AVAIL  TIMELIMIT  NODES  STATE NODELIST
+meta_gpu-black              up   infinite      4  down* metagpu[2-4,8]
+meta_gpu-black              up   infinite      1   drng metagpu9
+meta_gpu-black              up   infinite      1  drain metagpu1
+meta_gpu-black              up   infinite      1  alloc metagpu5
+test_cpu-ivy                up    1:05:00      1    mix metaex01
+ml_cpu-ivy                  up 4-00:00:00      1    mix metaex16
+ml_cpu-ivy                  up 4-00:00:00      2   idle metaex[15,17]
+cpu_ivy                     up    2:05:00      1    mix metaex16
+cpu_ivy                     up    2:05:00     10  alloc metaex[18-27]
+cpu_ivy                     up    2:05:00      7   idle metaex[15,17,28-32]
+bosch_cpu-cascadelake       up   infinite     36  alloc kisexe[09-44]
+allbosch_cpu-cascadelake    up    2:05:00      3    mix kisexe[03,06,08]
+allbosch_cpu-cascadelake    up    2:05:00     41  alloc kisexe[01-02,04-05,07,09-44]
+    """
+
+    if partition == 'test_cpu-ivy':
+        return 'metaex01'
+    elif partition == 'ml_cpu-ivy':
+        # Sleep for 5 seconds to make sure slurm updated
+        time.sleep(5)
+
+        result = subprocess.run(
+            f"squeue --format=\"%.50R\" --noheader -u {os.environ['USER']}",
+            shell=True,
+            stdout=subprocess.PIPE
+        )
+        result = result.stdout.decode('utf-8')
+        machines = {
+            'metaex15':0,
+            'metaex16':0,
+            'metaex17':0,
+        }
+        for i, line in enumerate(result.splitlines()):
+            line = line.lstrip().strip()
+            if line in machines:
+                machines[line] = machines[line]+1
+        return min(machines, key=machines.get)
+    else:
+        raise Exception(f"Unsupported partition={partition} provided")
+
+
+def launch_run(run_file, partition):
+    """Sends a job to sbatcht"""
+    name, ext = os.path.splitext(os.path.basename(run_file))
+    if check_if_running(run_file):
+        return
+    command = "sbatch -p {} -w {} -c 5 --job-name {} -o {} {}".format(
+            partition,
+            get_node(partition),
+            name,
+            os.path.join('logs', name + '.out'),
+            run_file,
+        )
+    print(f"-I-: Running command={command}")
+    returned_value = os.system(
+        command
+    )
+    return returned_value
 
 def launch_run(run_file, partition):
     """Sends a job to sbatcht"""
@@ -219,6 +285,7 @@ if __name__ == "__main__":
     parser.add_argument(
         '--partition',
         default='ml_cpu-ivy',
+        choices=['ml_cpu-ivy', 'test_cpu-ivy'],
         help='What framework to manage'
     )
     parser.add_argument(
