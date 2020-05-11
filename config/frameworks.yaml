@@ -1,0 +1,24 @@
+autosklearn_meta:
+   extends: autosklearn
+   params:
+     ensemble_size: -1
+
+H2OAutoML_yates:
+  module: frameworks.H2OAutoML
+  setup_cmd: 'pip install --no-cache-dir -U "http://h2o-release.s3.amazonaws.com/h2o/rel-yates/5/Python/h2o-3.24.0.5-py2.py3-none-any.whl"'
+  version: 'yates'
+
+autosklearn_v051:
+  module: frameworks.autosklearn
+  setup_cmd: 'echo $PWD && frameworks/autosklearn/venv/bin/pip3 install --no-cache-dir auto-sklearn==0.5.1'
+  version: 'v0.5.1'
+
+autosklearn_v060:
+  module: frameworks.autosklearn
+  setup_cmd: 'echo $PWD && frameworks/autosklearn/venv/bin/pip3 install --no-cache-dir auto-sklearn==0.6.0'
+  version: 'v0.6.0'
+
+autosklearn_v070:
+  module: frameworks.autosklearn
+  setup_cmd: 'echo $PWD && frameworks/autosklearn/venv/bin/pip3 install --no-cache-dir auto-sklearn==0.7.0'
+  version: 'v0.7.0'

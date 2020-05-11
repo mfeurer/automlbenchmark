@@ -8,6 +8,7 @@ os.environ['JOBLIB_TEMP_FOLDER'] = tmp.gettempdir()
 os.environ['OMP_NUM_THREADS'] = '1'
 os.environ['OPENBLAS_NUM_THREADS'] = '1'
 os.environ['MKL_NUM_THREADS'] = '1'
+import autosklearn
 from autosklearn.estimators import AutoSklearnClassifier, AutoSklearnRegressor
 import autosklearn.metrics as metrics
 
@@ -18,7 +19,7 @@ log = logging.getLogger(__name__)
 
 
 def run(dataset, config):
-    log.info("\n**** AutoSklearn ****\n")
+    log.info(f"\n**** AutoSklearn={autosklearn.__version__} ****\n")
     warnings.simplefilter(action='ignore', category=FutureWarning)
     warnings.simplefilter(action='ignore', category=DeprecationWarning)
 
@@ -28,6 +29,7 @@ def run(dataset, config):
     metrics_mapping = dict(
         acc=metrics.accuracy,
         auc=metrics.roc_auc,
+        bac=metrics.balanced_accuracy,
         f1=metrics.f1,
         logloss=metrics.log_loss,
         mae=metrics.mean_absolute_error,
@@ -61,7 +63,7 @@ def run(dataset, config):
     # (cores - 1) * ml_memory_limit_mb + ensemble_memory_limit_mb = config.max_mem_size_mb
     total_memory_mb = system_memory_mb().total
     if ml_memory_limit == 'auto':
-        ml_memory_limit = max(min(config.max_mem_size_mb,
+        ml_memory_limit = max(min(config.max_mem_size_mb / n_jobs,
                                   math.ceil(total_memory_mb / n_jobs)),
                               3072)  # 3072 is autosklearn defaults
     if ensemble_memory_limit == 'auto':
@@ -88,6 +90,10 @@ def run(dataset, config):
     y_test = dataset.test.y_enc
     predictions = auto_sklearn.predict(X_test)
     probabilities = auto_sklearn.predict_proba(X_test) if is_classification else None
+
+    print(f"sprint_statistics_start:")
+    print(auto_sklearn.sprint_statistics())
+    print(f"sprint_statistics_end:")
 
     save_artifacts(auto_sklearn, config)
 

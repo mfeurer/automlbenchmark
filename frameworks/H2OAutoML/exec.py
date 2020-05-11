@@ -18,6 +18,7 @@ def run(dataset: Dataset, config: TaskConfig):
     # Mapping of benchmark metrics to H2O metrics
     metrics_mapping = dict(
         acc='mean_per_class_error',
+        bac='mean_per_class_error',
         auc='AUC',
         logloss='logloss',
         mae='mae',
@@ -105,9 +106,12 @@ def save_artifacts(automl, dataset, config):
         log.debug("Leaderboard:\n%s", lb.to_string())
         if 'leaderboard' in artifacts:
             models_dir = make_subdir("models", config)
+            all_lb = h2o.automl.get_leaderboard(automl, extra_columns='ALL')
+            all_lb.as_data_frame().to_csv(os.path.join(models_dir, "leaderboard_all.csv"))
             write_csv(lb, os.path.join(models_dir, "leaderboard.csv"))
         if 'models' in artifacts:
             models_dir = make_subdir("models", config)
+            automl.leader.save_mojo(make_subdir("full_models", config))
             all_models_se = next((mid for mid in lb['model_id'] if mid.startswith("StackedEnsemble_AllModels")),
                                  None)
             mformat = 'mojo' if 'mojos' in artifacts else 'json'
@@ -132,7 +136,7 @@ def save_artifacts(automl, dataset, config):
             logs_dir = make_subdir("logs", config)
             h2o.download_all_logs(dirname=logs_dir)
     except:
-        log.debug("Error when saving artifacts.", exc_info=True)
+        log.error("Error when saving artifacts.", exc_info=True)
 
 
 def save_model(model_id, dest_dir='.', mformat='mojo'):
