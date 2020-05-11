@@ -80,7 +80,6 @@ def run(dataset, config):
                              ml_memory_limit=ml_memory_limit,
                              ensemble_memory_limit=ensemble_memory_limit,
                              seed=config.seed,
-                             tmp_folder=tmp.gettempdir(),
                              **training_params)
     with Timer() as training:
         auto_sklearn.fit(X_train, y_train, metric=perf_metric, feat_type=predictors_type)

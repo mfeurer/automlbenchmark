@@ -77,7 +77,7 @@ class Benchmark:
 
         self.parallel_jobs = rconfig().parallel_jobs
         self.sid = rconfig().sid if rconfig().sid is not None \
-            else "{}_{}".format('_'.join([framework_name, benchmark_name, constraint_name, rconfig().run_mode]).lower(),
+            else "{}_{}".format('_'.join([framework_name, benchmark_name, constraint_name, rconfig().run_mode, os.getpid()]).lower(),
                                 datetime_iso(micros=True, no_sep=True))
 
         self._validate()

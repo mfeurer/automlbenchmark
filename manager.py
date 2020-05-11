@@ -2,6 +2,7 @@ import argparse
 import collections
 import mmap
 import os
+import re
 import time
 import subprocess
 import logging
@@ -22,20 +23,22 @@ formatter = logging.Formatter('%(message)s')
 ch.setFormatter(formatter)
 logger.addHandler(ch)
 
-def generate_run_file(framework, benchmark, constraint, task, fold, force=False):
+def generate_run_file(framework, benchmark, constraint, task, fold, rundir):
     """Generates a bash script for the sbatch command"""
 
     run_file = f"results/{framework}_{benchmark}_{constraint}_{task}_{fold}.sh"
-    if os.path.exists(run_file) and not force:
+    if os.path.exists(run_file):
         return run_file
 
     command = f"""#!/bin/bash
 #Setup the run
-echo "Running on $HOSTNAME"
+echo "Running on HOSTNAME=$HOSTNAME with name $SLURM_JOB_NAME"
 export PATH=/usr/local/kislurm/singularity-3.5/bin/:$PATH
 export SINGULARITY_TMPDIR=/home/riverav/tmp
 source /home/riverav/work/venv/bin/activate
-cd /home/riverav/work/automlbenchmark
+cd {rundir}
+export TMPDIR=/tmp/$SLURM_JOB_NAME
+mkdir -p $TMPDIR
 
 # Config the run
 export framework={framework}
@@ -45,43 +48,12 @@ export task={task}
 export fold={fold}
 echo 'python runbenchmark.py {framework} {benchmark} {constraint} --task {task} --fold {fold} -m singularity'
 python runbenchmark.py {framework} {benchmark} {constraint} --task {task} --fold {fold} -m singularity
+rm -rf $TMPDIR
 echo 'Finished the run'
 """
 
     with open(run_file, 'w') as f:
         f.write(command)
-    return run_file
-
-def generate_run_file(framework, benchmark, constraint, task, fold, force=False):
-    """Generates a bash script for the sbatch command"""
-
-    run_file = f"results/{framework}_{benchmark}_{constraint}_{task}_{fold}.sh"
-    if os.path.exists(run_file) and not force:
-        return run_file
-
-    command = f"""#!/bin/bash
-#Setup the run
-echo "Running on $HOSTNAME"
-export PATH=/usr/local/kislurm/singularity-3.5/bin/:$PATH
-export SINGULARITY_TMPDIR=/home/riverav/tmp
-source /home/riverav/work/venv_new/bin/activate
-cd /home/riverav/work/automlbenchmark_new
-
-# Config the run
-export framework={framework}
-export benchmark={benchmark}
-export constraint={constraint}
-export task={task}
-export fold={fold}
-echo 'python runbenchmark.py {framework} {benchmark} {constraint} --task {task} --fold {fold} -m singularity'
-python runbenchmark.py {framework} {benchmark} {constraint} --task {task} --fold {fold} -m singularity
-echo 'Finished the run'
-"""
-
-    with open(run_file, 'w') as f:
-        f.write(command)
-    return run_file
-
 def get_task_from_benchmark(benchmarks):
     """Returns a dict with benchmark to task mapping"""
     task_from_benchmark = {}
@@ -253,7 +225,7 @@ allbosch_cpu-cascadelake    up    2:05:00     41  alloc kisexe[01-02,04-05,07,09
         raise Exception(f"Unsupported partition={partition} provided")
 
 
-def launch_run(run_file, partition, constraint):
+def launch_run(run_file, partition, constraint, rundir):
     """Sends a job to sbatcht"""
     name, ext = os.path.splitext(os.path.basename(run_file))
 
@@ -284,10 +256,25 @@ def launch_run(run_file, partition, constraint):
         extra
     )
     logger.debug(f"-I-: Running command={command}")
-    returned_value = os.system(
-        command
-    )
-    time.sleep(60)
+    returned_value = os.system(command)
+
+    success = re.compile('Submitted batch job (\d+)').match(returned_value)
+    if success:
+        jobid = int(results[1])
+        logfile = os.path.join('logs', name + '.out')
+
+        # Wait 5 seconds and launch the dependent cleanup job in case of failure
+        command = "sbatch -dependency=afternotok:{} --kill-on-invalid-dep=yes -p {} -c 1 --job-name {} -o {} {} {}".format(
+            jobid,
+            partition,
+            name+'_cleanup',
+            os.path.join('logs', name + '_cleanup' + '.out'),
+            f"ssh `grep 'Running on HOSTNAME' {logfile} | awk '{print$4}'`  ls -l /tmp/{name} &&  rm -rf /tmp/{name}",
+            extra
+        )
+        logger.debug(f"-I-: Running command={command}")
+        returned_value = os.system(command)
+
     return returned_value
 
 
@@ -315,7 +302,7 @@ def is_number(s):
     except ValueError:
         return False
 
-def get_job_status(frameworks, benchmarks, tasks, folds, partition, constraint, run):
+def get_job_status(frameworks, benchmarks, tasks, folds, partition, constraint, run, rundir):
 
     # Get the task
     jobs = collections.defaultdict(dict)
@@ -344,6 +331,7 @@ def get_job_status(frameworks, benchmarks, tasks, folds, partition, constraint, 
                         constraint=constraint,
                         task=task,
                         fold=fold,
+                        rundir=rundir,
                     )
 
                     # Check if there are results already
@@ -388,6 +376,7 @@ def get_job_status(frameworks, benchmarks, tasks, folds, partition, constraint, 
                                     jobs[framework][benchmark][task][fold]['run_file'],
                                     partition=partition,
                                     constraint=constraint,
+                                    rundir=rundir,
                                 )
                                 status = 'Launched'
                         else:
@@ -402,6 +391,7 @@ def get_job_status(frameworks, benchmarks, tasks, folds, partition, constraint, 
                                             jobs[framework][benchmark][task][fold]['run_file'],
                                             partition=partition,
                                             constraint=constraint,
+                                            rundir=rundir,
                                         )
                                         status = 'Relaunched'
                     jobs[framework][benchmark][task][fold]['status'] = status
@@ -515,20 +505,12 @@ if __name__ == "__main__":
         help='What framework to manage'
     )
     parser.add_argument(
-        '--force',
-        type=str2bool,
-        nargs='?',
-        const=True,
-        default=False,
-        help='Force everything-- Maybe use for a bad run'
-    )
-    parser.add_argument(
         '--run',
         type=str2bool,
         nargs='?',
         const=True,
         default=False,
-        help='Force everything-- Maybe use for a bad run'
+        help='Launches the run to sbatch'
     )
     parser.add_argument(
         '--verbose',
@@ -536,7 +518,7 @@ if __name__ == "__main__":
         nargs='?',
         const=True,
         default=True,
-        help='Force everything-- Maybe use for a bad run'
+        help='Prints more debug info'
     )
     parser.add_argument(
         '--problems',
@@ -544,7 +526,12 @@ if __name__ == "__main__":
         nargs='?',
         const=True,
         default=True,
-        help='Force everything-- Maybe use for a bad run'
+        help='generates a problems dataframe'
+    )
+    parser.add_argument(
+        '--rundir',
+        default='/home/riverav/work/automlbenchmark_new',
+        help='The area from where to run'
     )
 
     args = parser.parse_args()
@@ -581,7 +568,7 @@ if __name__ == "__main__":
         folds = np.arange(10)
 
     # Get the job status
-    jobs = get_job_status(frameworks, benchmarks, tasks, folds, args.partition, args.constraint, args.run)
+    jobs = get_job_status(frameworks, benchmarks, tasks, folds, args.partition, args.constraint, args.run, args.rundir)
 
     # Print the reports if needed
     if args.problems:

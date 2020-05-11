@@ -57,8 +57,14 @@ AutoWEKA:
 H2OAutoML:
   version: '3.30.0.1'
   project: http://docs.h2o.ai/h2o/latest-stable/h2o-docs/automl.html
-#  params:
-#    _save_artifacts: ['leaderboard', 'logs', 'models', 'models_predictions', 'mojos']
+  params:
+    _save_artifacts: ['leaderboard', 'logs', 'models', 'models_predictions' ]
+
+H2OAutoML_yates:
+  version: '3.24.0.1'
+  project: http://docs.h2o.ai/h2o/latest-stable/h2o-docs/automl.html
+  params:
+    _save_artifacts: ['leaderboard', 'logs', 'models', 'models_predictions' ]
 
 hyperoptsklearn:
   version: 'latest'
@@ -82,6 +88,9 @@ ranger:
 TPOT:
   version: '0.11.1'
   project: https://github.com/EpistasisLab/tpot
+  params:
+    _save_artifacts: ['leaderboard', 'logs', 'models', 'models_predictions', 'mojos']
+    verbosity: 2
 #  params:
 #    max_eval_time_mins: 2
 #    population_size: 25
@@ -94,6 +103,18 @@ GAMA:
 autoxgboost:
   version: '0.0.0.9000'
   project: https://github.com/ja-thomas/autoxgboost
+autosklearn_v060:
+  version: '0.6.0'
+  project: https://automl.github.io/auto-sklearn/stable/
+  params:
+    _save_artifacts: ['leaderboard', 'logs', 'models', 'models_predictions' ]
+
+autosklearn_v070:
+  version: '0.7.0'
+  project: https://automl.github.io/auto-sklearn/stable/
+  params:
+    _save_artifacts: ['leaderboard', 'logs', 'models', 'models_predictions' ]
+
 
 autoPyTorch:
   version: '0.0.2'
