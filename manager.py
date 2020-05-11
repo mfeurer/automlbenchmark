@@ -5,9 +5,12 @@ import os
 import time
 import subprocess
 import logging
+import glob
 
 import numpy as np
 import pandas as pd
+pd.set_option('display.width', 1000)
+pd.options.display.max_colwidth = 200
 
 import yaml
 
@@ -49,6 +52,35 @@ echo 'Finished the run'
         f.write(command)
     return run_file
 
+def generate_run_file(framework, benchmark, constraint, task, fold, force=False):
+    """Generates a bash script for the sbatch command"""
+
+    run_file = f"results/{framework}_{benchmark}_{constraint}_{task}_{fold}.sh"
+    if os.path.exists(run_file) and not force:
+        return run_file
+
+    command = f"""#!/bin/bash
+#Setup the run
+echo "Running on $HOSTNAME"
+export PATH=/usr/local/kislurm/singularity-3.5/bin/:$PATH
+export SINGULARITY_TMPDIR=/home/riverav/tmp
+source /home/riverav/work/venv_new/bin/activate
+cd /home/riverav/work/automlbenchmark_new
+
+# Config the run
+export framework={framework}
+export benchmark={benchmark}
+export constraint={constraint}
+export task={task}
+export fold={fold}
+echo 'python runbenchmark.py {framework} {benchmark} {constraint} --task {task} --fold {fold} -m singularity'
+python runbenchmark.py {framework} {benchmark} {constraint} --task {task} --fold {fold} -m singularity
+echo 'Finished the run'
+"""
+
+    with open(run_file, 'w') as f:
+        f.write(command)
+    return run_file
 
 def get_task_from_benchmark(benchmarks):
     """Returns a dict with benchmark to task mapping"""
@@ -77,8 +109,9 @@ def score(df, res_col='result'):
     """
     result = df['result'].iloc[0]
     auc = df['auc'].iloc[0] if 'auc' in df else None
+    bac = df['bac'].iloc[0] if 'bac' in df else None
     acc = df['acc'].iloc[0] if 'acc' in df else None
-    if result in [ auc, acc]:
+    if result in [ auc, acc, bac]:
         return result
     else:
         return -result
@@ -89,6 +122,9 @@ def norm_score(framework, benchmark, constraint, task, fold, score):
     one = get_results('RandomForest', benchmark, constraint, task, fold)
     if zero is None or one is None or not is_number(score):
         return score
+    print(f"score={score}({type(score)})")
+    print(f"one={one}({type(one)})")
+    print(f"zero={zero}({type(zero)})")
     return (score - zero) / (one - zero)
 
 
@@ -107,11 +143,13 @@ def get_results(framework, benchmark, constraint, task, fold):
         return None
 
     if df.shape[0] != 1:
-        logger.warn(f"More than 1 column ({df.shape[0]}) matched the criteria {framework} {benchmark} {constraint} {task} {fold}. Picking the first one: {df} ")
+        #logger.warn(f"More than 1 column ({df.shape[0]}) matched the criteria {framework} {benchmark} {constraint} {task} {fold}. Picking the first one: {df} ")
+        if df[df.applymap(np.isreal)['result']].shape[0] >= 1:
+            df = df[df.applymap(np.isreal)['result']]
 
-    result = df['result'].iloc[0]
+    result = df['result'].iloc[-1]
     if result is None or pd.isnull(result):
-        return df['info'].iloc[0]
+        return df['info'].iloc[-1]
 
     return score(df)
 
@@ -146,7 +184,9 @@ def check_if_crashed(run_file):
 
     causes = [
         'error: Exceeded job memory limit',
-        'DUE TO TIME LIMIT'
+        'DUE TO TIME LIMIT',
+        'MemoryError',
+        'OutOfMemoryError',
     ]
     with open(logfile, 'rb', 0) as file, mmap.mmap(file.fileno(), 0, access=mmap.ACCESS_READ) as s:
         for cause in causes:
@@ -213,39 +253,41 @@ allbosch_cpu-cascadelake    up    2:05:00     41  alloc kisexe[01-02,04-05,07,09
         raise Exception(f"Unsupported partition={partition} provided")
 
 
-def launch_run(run_file, partition):
+def launch_run(run_file, partition, constraint):
     """Sends a job to sbatcht"""
     name, ext = os.path.splitext(os.path.basename(run_file))
-    if check_if_running(run_file):
-        return
-    command = "sbatch -p {} -w {} -c 5 --job-name {} -o {} {}".format(
-            partition,
-            get_node(partition),
-            name,
-            os.path.join('logs', name + '.out'),
-            run_file,
-        )
-    logger.debug(f"-I-: Running command={command}")
-    returned_value = os.system(
-        command
-    )
-    return returned_value
 
-def launch_run(run_file, partition):
-    """Sends a job to sbatcht"""
-    name, ext = os.path.splitext(os.path.basename(run_file))
     if check_if_running(run_file):
         return
-    command = "sbatch -p {} -c 5 --job-name {} -o {} {}".format(
-            partition,
-            name,
-            os.path.join('logs', name + '.out'),
-            run_file,
-        )
+
+    # Run options
+    if partition == 'bosch_cpu-cascadelake':
+        extra = '--bosch --nodelist=kisexe[33-40] '
+        extra = '--bosch --nodelist=' + ','.join([f"kisexe{f}" for f in range(20,30)])
+        extra = '--bosch'
+    else:
+        extra = ''
+
+    if constraint == '1h8c':
+        memory = '32G'
+        cores = 8
+    else:
+        raise Exception(f"Unsupported constrain provided {constraint}")
+
+    command = "sbatch -p {} --mem {} -c {} --job-name {} -o {} {} {}".format(
+        partition,
+        memory,
+        cores,
+        name,
+        os.path.join('logs', name + '.out'),
+        run_file,
+        extra
+    )
     logger.debug(f"-I-: Running command={command}")
     returned_value = os.system(
         command
     )
+    time.sleep(60)
     return returned_value
 
 
@@ -273,6 +315,171 @@ def is_number(s):
     except ValueError:
         return False
 
+def get_job_status(frameworks, benchmarks, tasks, folds, partition, constraint, run):
+
+    # Get the task
+    jobs = collections.defaultdict(dict)
+    total = 0
+    for framework in frameworks:
+        jobs[framework] = dict()
+        logger.debug('_'*40)
+        logger.debug(f"\t\t{framework}")
+        logger.debug('_'*40)
+
+        for benchmark in benchmarks:
+            jobs[framework][benchmark] = dict()
+            logger.debug('_'*40)
+            logger.debug(f"\tbenchmark={benchmark}")
+            for task in tasks[benchmark]:
+                jobs[framework][benchmark][task] = dict()
+                logger.debug('_'*40)
+                logger.debug(f"\t\t task={task}")
+                for fold in folds:
+                    jobs[framework][benchmark][task][fold] = dict()
+
+                    # Check if the run files for this task exist
+                    jobs[framework][benchmark][task][fold]['run_file'] = generate_run_file(
+                        framework=framework,
+                        benchmark=benchmark,
+                        constraint=constraint,
+                        task=task,
+                        fold=fold,
+                    )
+
+                    # Check if there are results already
+                    jobs[framework][benchmark][task][fold]['results'] = get_results(
+                        framework=framework,
+                        benchmark=benchmark,
+                        constraint=constraint,
+                        task=task,
+                        fold=fold,
+                    )
+
+                    # Normalize the score as in the paper
+                    jobs[framework][benchmark][task][fold]['norm_score'] = norm_score(
+                        framework=framework,
+                        benchmark=benchmark,
+                        constraint=constraint,
+                        task=task,
+                        fold=fold,
+                        score=jobs[framework][benchmark][task][fold]['results'],
+                    )
+
+                    # Show status to see what is going on
+                    valid_result = is_number(jobs[framework][benchmark][task][fold]['results'])
+                    if valid_result:
+                        status = 'Completed'
+                    elif check_if_running(jobs[framework][benchmark][task][fold]['run_file']):
+                        status = 'Running'
+                    else:
+                        status = 'N/A'
+                        crashed = check_if_crashed(jobs[framework][benchmark][task][fold]['run_file'])
+                        if crashed:
+                            jobs[framework][benchmark][task][fold]['results'] = crashed
+                            status = 'Chrashed'
+
+                    if run:
+                        # Launch the run if it was not yet launched
+                        if jobs[framework][benchmark][task][fold]['results'] is None:
+                            if check_if_running(jobs[framework][benchmark][task][fold]['run_file']):
+                                status = 'Running'
+                            else:
+                                launch_run(
+                                    jobs[framework][benchmark][task][fold]['run_file'],
+                                    partition=partition,
+                                    constraint=constraint,
+                                )
+                                status = 'Launched'
+                        else:
+                            # If the run failed, then ask the user to relaunch
+                            if not valid_result:
+                                if check_if_running(jobs[framework][benchmark][task][fold]['run_file']):
+                                    status = 'Running'
+                                else:
+                                    status = 'Failed'
+                                    if query_yes_no(f"For framework={framework} benchmark={benchmark} constraint={constraint} task={task} fold={fold} obtained: {jobs[framework][benchmark][task][fold]['results']}. Do you want to relaunch this run?"):
+                                        launch_run(
+                                            jobs[framework][benchmark][task][fold]['run_file'],
+                                            partition=partition,
+                                            constraint=constraint,
+                                        )
+                                        status = 'Relaunched'
+                    jobs[framework][benchmark][task][fold]['status'] = status
+
+                    logger.debug(f"\t\t\tFold:{fold} Status = {status} ({jobs[framework][benchmark][task][fold]['results']})")
+                    total = total + 1
+
+
+    logger.debug('_'*40)
+    logger.debug(f" A total of {total} runs checked")
+    logger.debug('_'*40)
+
+    return jobs
+
+
+def get_normalized_score(frameworks, benchmarks, tasks, folds):
+    # Create a Dataframe
+    dataframe = []
+    for benchmark in benchmarks:
+        for task in tasks[benchmark]:
+            row = {
+                'benchmark': benchmark,
+                'Task': task,
+            }
+            for framework in frameworks:
+                average = []
+                for fold in folds:
+                    score = jobs[framework][benchmark][task][fold]['norm_score']
+                    if is_number(score):
+                        average.append(score)
+                if len(average) < 1:
+                    average = 'N/A'
+                else:
+                    average = np.nanmean(average) if np.any(average) else 0
+                    framework: average
+                row[framework] = average
+            dataframe.append(row)
+    dataframe = pd.DataFrame(dataframe)
+    return dataframe
+
+
+def get_problems(frameworks, benchmarks, tasks, folds):
+    # Create a Dataframe
+    dataframe = []
+    for benchmark in benchmarks:
+        for task in tasks[benchmark]:
+            row = {
+                'benchmark': benchmark,
+                'Task': task,
+                'Issues': [],
+            }
+            for framework in frameworks:
+                row[framework] = 0
+                for fold in folds:
+                    # If this run crashed,  register why
+                    if 'Chrashed' in jobs[framework][benchmark][task][fold]['status']:
+                        if jobs[framework][benchmark][task][fold]['results'] not in row['Issues']:
+                            row['Issues'].append(jobs[framework][benchmark][task][fold]['results'])
+                        row[framework] +=1
+            dataframe.append(row)
+    dataframe = pd.DataFrame(dataframe)
+    return dataframe
+
+def complete_missing_csv():
+    results_file = 'results.csv'
+    results = pd.read_csv(os.path.join('results', results_file))
+
+    for local_path in glob.glob('results/*/scores/results.csv'):
+        local_result = pd.read_csv(local_path)
+        if not local_result.empty:
+            #Just take rsults that make sense
+            local_result = local_result[local_result.applymap(np.isreal)['result']]
+            local_result = local_result[~local_result['fold'].isnull()]
+            if not local_result.empty:
+                results = pd.concat([results, local_result], sort=False).drop_duplicates()
+
+    results['fold'] = results['fold'].astype('int32')
+    results.to_csv("final.csv",index=False)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Manages the run of the benchmark')
@@ -283,7 +490,7 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         '--benchmark',
-        choices=['test', 'small', 'medium', 'large', 'validation'],
+        #choices=['test', 'small', 'medium', 'large', 'validation'],
         help='What benchmark to run'
     )
     parser.add_argument(
@@ -292,13 +499,14 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         '--constraint',
-        default='1h4c',
+        default='1h8c',
+        choices=['1h4c', '1h8c'],
         help='What framework to manage'
     )
     parser.add_argument(
         '--partition',
         default='ml_cpu-ivy',
-        choices=['ml_cpu-ivy', 'test_cpu-ivy'],
+        choices=['ml_cpu-ivy', 'test_cpu-ivy', 'bosch_cpu-cascadelake'],
         help='What framework to manage'
     )
     parser.add_argument(
@@ -330,6 +538,14 @@ if __name__ == "__main__":
         default=True,
         help='Force everything-- Maybe use for a bad run'
     )
+    parser.add_argument(
+        '--problems',
+        type=str2bool,
+        nargs='?',
+        const=True,
+        default=True,
+        help='Force everything-- Maybe use for a bad run'
+    )
 
     args = parser.parse_args()
     if args.verbose:
@@ -339,7 +555,7 @@ if __name__ == "__main__":
 
     frameworks = args.framework.split() if ' ' in args.framework else [args.framework]
     if args.benchmark:
-        benchmarks = [args.benchmark]
+        benchmarks = args.benchmark.split() if ' ' in args.benchmark else [args.benchmark]
     else:
         #benchmarks = ['test', 'small', 'medium', 'large']
         benchmarks = ['test', 'small']
@@ -364,119 +580,19 @@ if __name__ == "__main__":
     else :
         folds = np.arange(10)
 
-    # Get the task
-    jobs = collections.defaultdict(dict)
-    total = 0
-    for framework in frameworks:
-        jobs[framework] = dict()
-        logger.debug('_'*40)
-        logger.debug(f"\t\t{framework}")
-        logger.debug('_'*40)
-        for benchmark in benchmarks:
-            jobs[framework][benchmark] = dict()
-            logger.debug('_'*40)
-            logger.debug(f"\tbenchmark={benchmark}")
-            for task in tasks[benchmark]:
-                jobs[framework][benchmark][task] = dict()
-                logger.debug('_'*40)
-                logger.debug(f"\t\t task={task}")
-                for fold in folds:
-                    jobs[framework][benchmark][task][fold] = dict()
+    # Get the job status
+    jobs = get_job_status(frameworks, benchmarks, tasks, folds, args.partition, args.constraint, args.run)
 
-                    # Check if the run files for this task exist
-                    jobs[framework][benchmark][task][fold]['run_file'] = generate_run_file(
-                        framework=framework,
-                        benchmark=benchmark,
-                        constraint=args.constraint,
-                        task=task,
-                        fold=fold,
-                        force= False if not args.force else True,
-                    )
+    # Print the reports if needed
+    if args.problems:
+        problems = get_problems(frameworks, benchmarks, tasks, folds)
+        logger.warn("This Run problems are:\n")
+        logger.warn(problems)
+        logger.warn("\n")
+        problems.to_csv('problems.csv', index=False)
 
-                    # Check if there are results already
-                    jobs[framework][benchmark][task][fold]['results'] = get_results(
-                        framework=framework,
-                        benchmark=benchmark,
-                        constraint=args.constraint,
-                        task=task,
-                        fold=fold,
-                    )
-
-                    # Normalize the score as in the paper
-                    jobs[framework][benchmark][task][fold]['norm_score'] = norm_score(
-                        framework=framework,
-                        benchmark=benchmark,
-                        constraint=args.constraint,
-                        task=task,
-                        fold=fold,
-                        score=jobs[framework][benchmark][task][fold]['results'],
-                    )
-
-                    # Show status to see what is going on
-                    valid_result = is_number(jobs[framework][benchmark][task][fold]['results'])
-                    if valid_result:
-                        status = 'Completed'
-                    elif check_if_running(jobs[framework][benchmark][task][fold]['run_file']):
-                        status = 'Running'
-                    else:
-                        status = 'N/A'
-                        crashed = check_if_crashed(jobs[framework][benchmark][task][fold]['run_file'])
-                        if crashed:
-                            jobs[framework][benchmark][task][fold]['results'] = crashed
-                            status = 'Chrashed'
-
-                    if args.run:
-                        # Launch the run if it was not yet launched
-                        if jobs[framework][benchmark][task][fold]['results'] is None or args.force:
-                            if check_if_running(jobs[framework][benchmark][task][fold]['run_file']):
-                                status = 'Running'
-                            else:
-                                launch_run(
-                                    jobs[framework][benchmark][task][fold]['run_file'],
-                                    partition=args.partition,
-                                )
-                                status = 'Launched'
-                        else:
-                            # If the run failed, then ask the user to relaunch
-                            if not valid_result:
-                                if check_if_running(jobs[framework][benchmark][task][fold]['run_file']):
-                                    status = 'Running'
-                                else:
-                                    status = 'Failed'
-                                    if query_yes_no(f"For framework={framework} benchmark={benchmark} constraint={args.constraint} task={task} fold={fold} obtained: {jobs[framework][benchmark][task][fold]['results']}. Do you want to relaunch this run?"):
-                                        launch_run(
-                                            jobs[framework][benchmark][task][fold]['run_file'],
-                                            partition=args.partition,
-                                        )
-                                        status = 'Relaunched'
-
-                    logger.debug(f"\t\t\tFold:{fold} Status = {status} ({jobs[framework][benchmark][task][fold]['results']})")
-                    total = total + 1
-
-    logger.debug('_'*40)
-    logger.debug(f" A total of {total} runs checked")
-    logger.debug('_'*40)
-
-    # Create a Dataframe
-    dataframe = []
-    for benchmark in benchmarks:
-        for task in tasks[benchmark]:
-            row = {
-                'benchmark': benchmark,
-                'Task': task,
-            }
-            for framework in frameworks:
-                average = []
-                for fold in folds:
-                    score = jobs[framework][benchmark][task][fold]['norm_score']
-                    if is_number(score):
-                        average.append(score)
-                if len(average) < 1:
-                    average = 'N/A'
-                else:
-                    average = np.mean(average) if np.any(average) else 0
-                    framework: average
-                row[framework] = average
-            dataframe.append(row)
-    dataframe = pd.DataFrame(dataframe)
-    logger.warn(dataframe)
+    # Get and print the normalized score
+    logger.warn("\nCheck the file normalized_score.csv!")
+    normalized_score_dataframe = get_normalized_score(frameworks, benchmarks, tasks, folds)
+    logger.warn(normalized_score_dataframe)
+    normalized_score_dataframe.to_csv('normalized_score.csv', index=False)
