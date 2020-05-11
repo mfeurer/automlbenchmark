@@ -23,6 +23,7 @@ formatter = logging.Formatter('%(message)s')
 ch.setFormatter(formatter)
 logger.addHandler(ch)
 
+
 def generate_run_file(framework, benchmark, constraint, task, fold, rundir):
     """Generates a bash script for the sbatch command"""
 
@@ -48,12 +49,40 @@ export task={task}
 export fold={fold}
 echo 'python runbenchmark.py {framework} {benchmark} {constraint} --task {task} --fold {fold} -m singularity'
 python runbenchmark.py {framework} {benchmark} {constraint} --task {task} --fold {fold} -m singularity
+echo "Deleting temporal folder $TMPDIR"
 rm -rf $TMPDIR
 echo 'Finished the run'
 """
 
     with open(run_file, 'w') as f:
         f.write(command)
+    return run_file
+
+
+def generate_cleanup_file(run_file, rundir):
+    """Generates a bash script for the sbatch command"""
+
+    name, ext = os.path.splitext(os.path.basename(run_file))
+    clean_file = f"results/{name}_cleanup.sh"
+    if os.path.exists(clean_file):
+        return clean_file
+
+    command = f"""#!/bin/bash
+#Setup the run
+echo "Running on HOSTNAME=$HOSTNAME with name $SLURM_JOB_NAME"
+export PATH=/usr/local/kislurm/singularity-3.5/bin/:$PATH
+export SINGULARITY_TMPDIR=/home/riverav/tmp
+source /home/riverav/work/venv/bin/activate
+export TMPDIR=/tmp/{name}
+export host=`grep HOSTNAME= {rundir}/logs/{name}.out | sed 's/^.*HOSTNAME=\([_[:alnum:]]*\).*/\\1/'`
+ssh -o 'StrictHostKeyChecking no' $host ls -l /tmp/{name} &&  rm -rf /tmp/{name}
+echo 'Finished the run'
+"""
+
+    with open(clean_file, 'w') as f:
+        f.write(command)
+    return clean_file
+
 def get_task_from_benchmark(benchmarks):
     """Returns a dict with benchmark to task mapping"""
     task_from_benchmark = {}
@@ -243,6 +272,12 @@ def launch_run(run_file, partition, constraint, rundir):
     if constraint == '1h8c':
         memory = '32G'
         cores = 8
+    elif constraint == '1h4c':
+        memory = '16G'
+        cores = 4
+    elif constraint == 'test':
+        memory = '8G'
+        cores = 2
     else:
         raise Exception(f"Unsupported constrain provided {constraint}")
 
@@ -256,20 +291,26 @@ def launch_run(run_file, partition, constraint, rundir):
         extra
     )
     logger.debug(f"-I-: Running command={command}")
-    returned_value = os.system(command)
+    returned_value = subprocess.run(
+        command,
+        shell=True,
+        stdout=subprocess.PIPE
+    )
+    returned_value = returned_value.stdout.decode('utf-8')
 
     success = re.compile('Submitted batch job (\d+)').match(returned_value)
     if success:
-        jobid = int(results[1])
+        jobid = int(success[1])
+        print(f"jobid={jobid}")
         logfile = os.path.join('logs', name + '.out')
 
         # Wait 5 seconds and launch the dependent cleanup job in case of failure
-        command = "sbatch -dependency=afternotok:{} --kill-on-invalid-dep=yes -p {} -c 1 --job-name {} -o {} {} {}".format(
+        command = "sbatch --dependency=afternotok:{} --kill-on-invalid-dep=yes -p {} -c 1 --job-name {} -o {} {} {}".format(
             jobid,
             partition,
             name+'_cleanup',
             os.path.join('logs', name + '_cleanup' + '.out'),
-            f"ssh `grep 'Running on HOSTNAME' {logfile} | awk '{print$4}'`  ls -l /tmp/{name} &&  rm -rf /tmp/{name}",
+            generate_cleanup_file(run_file, rundir),
             extra
         )
         logger.debug(f"-I-: Running command={command}")
@@ -490,7 +531,7 @@ if __name__ == "__main__":
     parser.add_argument(
         '--constraint',
         default='1h8c',
-        choices=['1h4c', '1h8c'],
+        choices=['test', '1h4c', '1h8c'],
         help='What framework to manage'
     )
     parser.add_argument(
@@ -530,7 +571,7 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         '--rundir',
-        default='/home/riverav/work/automlbenchmark_new',
+        default='/home/riverav/work/automlbenchmark_fork',
         help='The area from where to run'
     )
 
