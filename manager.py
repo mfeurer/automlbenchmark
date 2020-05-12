@@ -119,13 +119,14 @@ def score(df, res_col='result'):
 
 
 def norm_score(framework, benchmark, constraint, task, fold, score):
-    zero = get_results('constantpredictor', benchmark, constraint, task, fold)
-    one = get_results('RandomForest', benchmark, constraint, task, fold)
-    if zero is None or one is None or not is_number(score):
+    if score is None or not is_number(score):
         return score
-    print(f"score={score}({type(score)})")
-    print(f"one={one}({type(one)})")
-    print(f"zero={zero}({type(zero)})")
+    zero = get_results('constantpredictor', benchmark, constraint, task, fold)
+    if zero is None or not is_number(zero):
+        return score
+    one = get_results('RandomForest', benchmark, constraint, task, fold)
+    if one is None or not is_number(one):
+        return score
     return (score - zero) / (one - zero)
 
 
@@ -464,11 +465,11 @@ def get_normalized_score(frameworks, benchmarks, tasks, folds):
                     if is_number(score):
                         average.append(score)
                 if len(average) < 1:
-                    average = 'N/A'
+                    average_result = 'N/A'
                 else:
-                    average = np.nanmean(average) if np.any(average) else 0
-                    framework: average
-                row[framework] = average
+                    average_result = np.nanmean(average) if np.any(average) else 0
+                row[framework] = average_result
+                row[framework + '_num_folds'] = len(average)
             dataframe.append(row)
     dataframe = pd.DataFrame(dataframe)
     return dataframe
