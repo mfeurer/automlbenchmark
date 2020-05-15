@@ -93,7 +93,7 @@ def run(dataset, config):
     try:
         probabilities = auto_sklearn.predict_proba(X_test) if is_classification else None
     except Exception as e:
-        filename = 'debug.pkl'
+        filename = f"/tmp/debug_{str(os.getpid())}.pkl"
         log.critical(f"Failed on predicting probabilities X_test={X_test} for classifier ={auto_sklearn.show_models()} and predictions={predictions}. Check file {filename}")
         pickle.dump(auto_sklearn, open(filename, 'wb'))
         raise Exception(e)

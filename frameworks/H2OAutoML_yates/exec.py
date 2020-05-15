@@ -108,8 +108,6 @@ def save_artifacts(automl, dataset, config):
         log.debug("Leaderboard:\n%s", lb.to_string())
         if 'leaderboard' in artifacts:
             models_dir = make_subdir("models", config)
-            all_lb = h2o.automl.get_leaderboard(automl, extra_columns='ALL')
-            all_lb.as_data_frame().to_csv(os.path.join(models_dir, "leaderboard_all.csv"))
             write_csv(lb, os.path.join(models_dir, "leaderboard.csv"))
         if 'models' in artifacts:
             models_dir = make_subdir("models", config)

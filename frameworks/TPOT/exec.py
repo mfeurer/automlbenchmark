@@ -14,6 +14,7 @@ from tpot import TPOTClassifier, TPOTRegressor
 
 from frameworks.shared.callee import call_run, result, Timer, touch
 
+from sklearn.metrics import balanced_accuracy_score, make_scorer
 
 log = logging.getLogger(__name__)
 
@@ -23,9 +24,11 @@ def run(dataset, config):
 
     is_classification = config.type == 'classification'
     # Mapping of benchmark metrics to TPOT metrics
+    my_custom_scorer = make_scorer(balanced_accuracy_score)
     metrics_mapping = dict(
         acc='accuracy',
         auc='roc_auc',
+        bac=my_custom_scorer,
         f1='f1',
         logloss='neg_log_loss',
         mae='neg_mean_absolute_error',
@@ -46,6 +49,7 @@ def run(dataset, config):
     log.info('Running TPOT with a maximum time of %ss on %s cores, optimizing %s.',
              config.max_runtime_seconds, n_jobs, scoring_metric)
     runtime_min = (config.max_runtime_seconds/60)
+
 
     estimator = TPOTClassifier if is_classification else TPOTRegressor
     tpot = estimator(n_jobs=n_jobs,
@@ -91,6 +95,8 @@ def save_artifacts(estimator, config):
         hall_of_fame = list(zip(reversed(estimator._pareto_front.keys), estimator._pareto_front.items))
         artifacts = config.framework_params.get('_save_artifacts', False)
         if 'models' in artifacts:
+            models_file = os.path.join(make_subdir('full_models', config), 'tpot_exported_pipeline.py')
+            estimator.export(models_file)
             models_file = os.path.join(make_subdir('models', config), 'models.txt')
             with open(models_file, 'w') as f:
                 for m in hall_of_fame:
