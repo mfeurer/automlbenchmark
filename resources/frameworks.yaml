@@ -115,6 +115,11 @@ autosklearn_v070:
   params:
     _save_artifacts: ['leaderboard', 'logs', 'models', 'models_predictions' ]
 
+autosklearn_dev:
+  version: 'dev'
+  project: https://automl.github.io/auto-sklearn/stable/
+  params:
+    _save_artifacts: ['leaderboard', 'logs', 'models', 'models_predictions' ]
 
 autoPyTorch:
   version: '0.0.2'
