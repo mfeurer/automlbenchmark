@@ -3,6 +3,7 @@ import math
 import os
 import tempfile as tmp
 import warnings
+import pickle
 
 os.environ['JOBLIB_TEMP_FOLDER'] = tmp.gettempdir()
 os.environ['OMP_NUM_THREADS'] = '1'
@@ -93,7 +94,9 @@ def run(dataset, config):
     try:
         probabilities = auto_sklearn.predict_proba(X_test) if is_classification else None
     except Exception as e:
+        filename = 'debug.pkl'
         log.critical(f"Failed on predicting probabilities X_test={X_test} for classifier = {auto_sklearn.show_models()}")
+        pickle.dump(auto_sklearn, open(filename, 'wb'))
         raise e
 
     print(f"sprint_statistics_start:")
