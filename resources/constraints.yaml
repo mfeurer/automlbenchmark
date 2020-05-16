@@ -15,6 +15,7 @@ test:
   max_runtime_seconds: 3600
   cores: 8
   min_vol_size_mb: 16384
+  max_mem_size_mb: 32768
 
 4h8c:
   folds: 10
