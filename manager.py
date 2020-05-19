@@ -1,4 +1,5 @@
 import argparse
+from random import randrange
 import collections
 import mmap
 import os
@@ -28,8 +29,6 @@ def generate_run_file(framework, benchmark, constraint, task, fold, rundir):
     """Generates a bash script for the sbatch command"""
 
     run_file = f"results/{framework}_{benchmark}_{constraint}_{task}_{fold}.sh"
-    if os.path.exists(run_file):
-        return run_file
 
     command = f"""#!/bin/bash
 #Setup the run
@@ -38,8 +37,10 @@ export PATH=/usr/local/kislurm/singularity-3.5/bin/:$PATH
 export SINGULARITY_TMPDIR=/home/riverav/tmp
 source /home/riverav/work/venv/bin/activate
 cd {rundir}
-export TMPDIR=/tmp/$SLURM_JOB_NAME
+if [ -z "$SLURM_ARRAY_TASK_ID" ]; then export TMPDIR=/tmp/{framework}_{benchmark}_{constraint}_{task}_{fold}_$SLURM_JOB_ID; else export TMPDIR=/tmp/{framework}_{benchmark}_{constraint}_{task}_{fold}$SLURM_ARRAY_JOB_ID'_'$SLURM_ARRAY_TASK_ID; fi
+echo TMPDIR=$TMPDIR
 mkdir -p $TMPDIR
+export SINGULARITY_BINDPATH="$TMPDIR:/tmp"
 
 # Config the run
 export framework={framework}
@@ -47,8 +48,8 @@ export benchmark={benchmark}
 export constraint={constraint}
 export task={task}
 export fold={fold}
-echo 'python runbenchmark.py {framework} {benchmark} {constraint} --task {task} --fold {fold} -m singularity'
-python runbenchmark.py {framework} {benchmark} {constraint} --task {task} --fold {fold} -m singularity
+echo 'python runbenchmark.py {framework} {benchmark} {constraint} --task {task} --fold {fold} -m singularity --session {framework}_{benchmark}_{constraint}_{task}_{fold}'
+python runbenchmark.py {framework} {benchmark} {constraint} --task {task} --fold {fold} -m singularity --session {framework}_{benchmark}_{constraint}_{task}_{fold}
 echo "Deleting temporal folder $TMPDIR"
 rm -rf $TMPDIR
 echo 'Finished the run'
@@ -59,13 +60,11 @@ echo 'Finished the run'
     return run_file
 
 
-def generate_cleanup_file(run_file, rundir):
+def generate_cleanup_file(run_file, jobid, rundir):
     """Generates a bash script for the sbatch command"""
 
     name, ext = os.path.splitext(os.path.basename(run_file))
     clean_file = f"results/{name}_cleanup.sh"
-    if os.path.exists(clean_file):
-        return clean_file
 
     command = f"""#!/bin/bash
 #Setup the run
@@ -73,9 +72,13 @@ echo "Running on HOSTNAME=$HOSTNAME with name $SLURM_JOB_NAME"
 export PATH=/usr/local/kislurm/singularity-3.5/bin/:$PATH
 export SINGULARITY_TMPDIR=/home/riverav/tmp
 source /home/riverav/work/venv/bin/activate
-export TMPDIR=/tmp/{name}
-export host=`grep HOSTNAME= {rundir}/logs/{name}.out | sed 's/^.*HOSTNAME=\([_[:alnum:]]*\).*/\\1/'`
-ssh -o 'StrictHostKeyChecking no' $host ls -l /tmp/{name} &&  rm -rf /tmp/{name}
+export host=`sacct -j {jobid} --format=NodeList --noheader | sort -u`
+if [ -z "$host" ]
+then
+    echo "No host could be found for cleanup"
+else
+    ssh -o 'StrictHostKeyChecking no' $host ls -l /tmp/{jobid} &&  rm -rf /tmp/{jobid}
+fi
 echo 'Finished the run'
 """
 
@@ -146,10 +149,12 @@ def get_results(framework, benchmark, constraint, task, fold):
 
     if df.shape[0] != 1:
         #logger.warn(f"More than 1 column ({df.shape[0]}) matched the criteria {framework} {benchmark} {constraint} {task} {fold}. Picking the first one: {df} ")
-        if df[df.applymap(np.isreal)['result']].shape[0] >= 1:
-            df = df[df.applymap(np.isreal)['result']]
+        if not df[df.result.notnull()].empty:
+            df = df[df.result.notnull()]
+            df = df.iloc[[-1]]
 
     result = df['result'].iloc[-1]
+
     if result is None or pd.isnull(result):
         return df['info'].iloc[-1]
 
@@ -189,6 +194,7 @@ def check_if_crashed(run_file):
         'DUE TO TIME LIMIT',
         'MemoryError',
         'OutOfMemoryError',
+        'timeout',
     ]
     with open(logfile, 'rb', 0) as file, mmap.mmap(file.fileno(), 0, access=mmap.ACCESS_READ) as s:
         for cause in causes:
@@ -199,6 +205,8 @@ def check_if_crashed(run_file):
 
 def check_if_running(run_file):
     name, ext = os.path.splitext(os.path.basename(run_file))
+
+    # First check if there is a job with this name
     result = subprocess.run([
         'squeue',
         f"--format=\"%.50j\" --noheader -u {os.environ['USER']}"
@@ -207,6 +215,27 @@ def check_if_running(run_file):
     for i, line in enumerate(result.splitlines()):
         if name in line:
             return True
+
+    # The check in the user job arrays
+    result = subprocess.run([
+        f"squeue --format=\"%.50i\" --noheader -u {os.environ['USER']}"
+    ], shell=True, stdout=subprocess.PIPE)
+    result = result.stdout.decode('utf-8')
+    jobids = [jobid.split('_')[0] for jobid in result.splitlines() if "_" in jobid]
+    if jobids:
+        jobids = list(set(jobids))
+    for i, array_job in enumerate(jobids):
+        command = subprocess.run([
+            f"scontrol show jobid -dd {array_job} | grep Command |  sort --unique",
+        ], shell=True, stdout=subprocess.PIPE)
+        command, filename = command.stdout.decode('utf-8').split('=')
+        filename = filename.lstrip().rstrip()
+        if not os.path.exists(filename):
+            raise Exception(f"Could not find file {filename} from command={command} array_job={array_job }")
+        with open(filename, 'r') as data_file:
+            if name in data_file.read():
+                return True
+
     return False
 
 
@@ -254,21 +283,61 @@ allbosch_cpu-cascadelake    up    2:05:00     41  alloc kisexe[01-02,04-05,07,09
     else:
         raise Exception(f"Unsupported partition={partition} provided")
 
+def to_array_run(run_file, memory, cores, rundir):
 
-def launch_run(run_file, partition, constraint, rundir):
+    name = f"{rundir}/results/arrayjob_{len(run_file)}_{os.getpid()}_{randrange(100)}.sh"
+
+    command = f"""#!/bin/bash
+#SBATCH -o {rundir}/logs/%x.%A.%a.out
+#SBATCH -c {cores}
+#SBATCH --mem {memory}
+
+echo "Here's what we know from the SLURM environment"
+echo SHELL=$SHELL
+echo HOME=$HOME
+echo CWD=$(pwd)
+echo USER=$USER
+echo JOB_ID=$JOB_ID
+echo JOB_NAME=$JOB_NAME
+echo HOSTNAME=$HOSTNAME
+echo SLURM_ARRAY_TASK_ID=$SLURM_ARRAY_TASK_ID
+echo "Job started at: `date`"
+
+"""
+    for i, task in enumerate(run_file):
+        command += f"\nif [ $SLURM_ARRAY_TASK_ID -eq {i} ]"
+        command += f"\n\tthen"
+        command += f"\n\t\techo \"Chrashed {rundir}/logs/$SLURM_JOB_NAME.$SLURM_ARRAY_JOB_ID.$SLURM_ARRAY_TASK_ID.out\" > {rundir}/logs/{os.path.splitext(os.path.basename(task))[0]}.out"
+        command += f"\n\t\tbash -x {task}"
+        command += f"\n\t\t cp {rundir}/logs/$SLURM_JOB_NAME.$SLURM_ARRAY_JOB_ID.$SLURM_ARRAY_TASK_ID.out {rundir}/logs/{os.path.splitext(os.path.basename(task))[0]}.out"
+        command +="\n\tfi\n"
+    command += "\necho DONE at: `date`"
+
+    with open(name, 'w') as f:
+        f.write(command)
+    return name
+
+
+def launch_run(run_file, partition, constraint, rundir, run_mode):
     """Sends a job to sbatcht"""
-    name, ext = os.path.splitext(os.path.basename(run_file))
 
-    if check_if_running(run_file):
+    # Check if run mode is not understandle
+    if 'array' not in run_mode and 'single' not in run_mode:
+        raise Exception(f"Unsupported run_mode {run_mode} provided")
+
+    # make sure we work with lists
+    not_launched_runs = []
+    for task in run_file:
+        if not  check_if_running(task):
+            not_launched_runs.append(task)
+    if not not_launched_runs:
         return
+    run_file = not_launched_runs
 
     # Run options
+    extra = ''
     if partition == 'bosch_cpu-cascadelake':
-        extra = '--bosch --nodelist=kisexe[33-40] '
-        extra = '--bosch --nodelist=' + ','.join([f"kisexe{f}" for f in range(20,30)])
-        extra = '--bosch'
-    else:
-        extra = ''
+        extra += ' --bosch'
 
     if constraint == '1h8c':
         memory = '32G'
@@ -282,14 +351,38 @@ def launch_run(run_file, partition, constraint, rundir):
     else:
         raise Exception(f"Unsupported constrain provided {constraint}")
 
-    command = "sbatch -p {} --mem {} -c {} --job-name {} -o {} {} {}".format(
-        partition,
-        memory,
-        cores,
-        name,
-        os.path.join('logs', name + '.out'),
-        run_file,
-        extra
+    # For array
+    if 'array' in run_mode:
+        job_list_file = to_array_run(run_file, memory, cores, rundir)
+        name, ext = os.path.splitext(os.path.basename(job_list_file))
+        _, max_active_runs = run_mode.split('_')
+        max_run = min(int(max_active_runs), len(run_file))
+        extra += f" -p {partition} --array=0-{len(run_file)-1}%{max_run} --job-name {name}"
+        jobid = _launch_sbatch_run(extra, job_list_file)
+
+    elif run_mode == 'single':
+        for task in run_file:
+            name, ext = os.path.splitext(os.path.basename(task))
+            this_extra = extra + f" -p {partition} --mem {memory} -c {cores} --job-name {name} -o {os.path.join('logs', name + '.out')}"
+            jobid = _launch_sbatch_run(this_extra, task)
+
+    # Wait 5 seconds and launch the dependent cleanup job in case of failure
+    for i, task in enumerate(run_file):
+        name, ext = os.path.splitext(os.path.basename(task))
+        local_jobid = jobid if 'array' not in run_mode else f"{jobid}_{i}"
+        options = "--dependency=afternotok:{} --kill-on-invalid-dep=yes -p {} {} -c 1 --job-name {} -o {}".format(
+            local_jobid,
+            partition,
+            '--bosch' if partition == 'bosch_cpu-cascadelake' else '',
+            name+'_cleanup',
+            os.path.join('logs', name + '_cleanup' + '.out'),
+        )
+        #_launch_sbatch_run(options, generate_cleanup_file(task, local_jobid, rundir))
+
+def _launch_sbatch_run(options, script):
+    command = "sbatch {} {}".format(
+        options,
+        script
     )
     logger.debug(f"-I-: Running command={command}")
     returned_value = subprocess.run(
@@ -301,23 +394,9 @@ def launch_run(run_file, partition, constraint, rundir):
 
     success = re.compile('Submitted batch job (\d+)').match(returned_value)
     if success:
-        jobid = int(success[1])
-        print(f"jobid={jobid}")
-        logfile = os.path.join('logs', name + '.out')
-
-        # Wait 5 seconds and launch the dependent cleanup job in case of failure
-        command = "sbatch --dependency=afternotok:{} --kill-on-invalid-dep=yes -p {} -c 1 --job-name {} -o {} {} {}".format(
-            jobid,
-            partition,
-            name+'_cleanup',
-            os.path.join('logs', name + '_cleanup' + '.out'),
-            generate_cleanup_file(run_file, rundir),
-            extra
-        )
-        logger.debug(f"-I-: Running command={command}")
-        returned_value = os.system(command)
-
-    return returned_value
+        return int(success[1])
+    else:
+        raise Exception("Could not launch job for script={script}")
 
 
 def str2bool(v):
@@ -344,11 +423,15 @@ def is_number(s):
     except ValueError:
         return False
 
-def get_job_status(frameworks, benchmarks, tasks, folds, partition, constraint, run, rundir):
+def get_job_status(frameworks, benchmarks, tasks, folds, partition, constraint, run_mode, rundir):
 
     # Get the task
     jobs = collections.defaultdict(dict)
     total = 0
+
+    # get a list of jobs to run
+    run_files = []
+
     for framework in frameworks:
         jobs[framework] = dict()
         logger.debug('_'*40)
@@ -408,18 +491,13 @@ def get_job_status(frameworks, benchmarks, tasks, folds, partition, constraint, 
                             jobs[framework][benchmark][task][fold]['results'] = crashed
                             status = 'Chrashed'
 
-                    if run:
+                    if run_mode:
                         # Launch the run if it was not yet launched
                         if jobs[framework][benchmark][task][fold]['results'] is None:
                             if check_if_running(jobs[framework][benchmark][task][fold]['run_file']):
                                 status = 'Running'
                             else:
-                                launch_run(
-                                    jobs[framework][benchmark][task][fold]['run_file'],
-                                    partition=partition,
-                                    constraint=constraint,
-                                    rundir=rundir,
-                                )
+                                run_files.append(jobs[framework][benchmark][task][fold]['run_file'])
                                 status = 'Launched'
                         else:
                             # If the run failed, then ask the user to relaunch
@@ -429,18 +507,22 @@ def get_job_status(frameworks, benchmarks, tasks, folds, partition, constraint, 
                                 else:
                                     status = 'Failed'
                                     if query_yes_no(f"For framework={framework} benchmark={benchmark} constraint={constraint} task={task} fold={fold} obtained: {jobs[framework][benchmark][task][fold]['results']}. Do you want to relaunch this run?"):
-                                        launch_run(
-                                            jobs[framework][benchmark][task][fold]['run_file'],
-                                            partition=partition,
-                                            constraint=constraint,
-                                            rundir=rundir,
-                                        )
+                                        run_files.append(jobs[framework][benchmark][task][fold]['run_file'])
                                         status = 'Relaunched'
                     jobs[framework][benchmark][task][fold]['status'] = status
 
                     logger.debug(f"\t\t\tFold:{fold} Status = {status} ({jobs[framework][benchmark][task][fold]['results']})")
                     total = total + 1
 
+    # Launch the runs in sbatch
+    if run_files:
+        launch_run(
+            run_files,
+            partition=partition,
+            constraint=constraint,
+            rundir=rundir,
+            run_mode=run_mode,
+        )
 
     logger.debug('_'*40)
     logger.debug(f" A total of {total} runs checked")
@@ -466,9 +548,11 @@ def get_normalized_score(frameworks, benchmarks, tasks, folds):
                         average.append(score)
                 if len(average) < 1:
                     average_result = 'N/A'
+                    row[framework + '_mean'] = average_result
+                    row[framework + '_std'] = average_result
                 else:
-                    average_result = np.nanmean(average) if np.any(average) else 0
-                row[framework] = average_result
+                    row[framework + '_mean'] = np.nanmean(average) if np.any(average) else 0
+                    row[framework + '_std'] = np.nanstd(average) if np.any(average) else 0
                 row[framework + '_num_folds'] = len(average)
             dataframe.append(row)
     dataframe = pd.DataFrame(dataframe)
@@ -533,18 +617,19 @@ if __name__ == "__main__":
         '--constraint',
         default='1h8c',
         choices=['test', '1h4c', '1h8c'],
-        help='What framework to manage'
+        help='What number o fcores and runtime is allowed'
     )
     parser.add_argument(
         '--partition',
         default='ml_cpu-ivy',
         choices=['ml_cpu-ivy', 'test_cpu-ivy', 'bosch_cpu-cascadelake'],
-        help='What framework to manage'
+        help='In what partition to launch'
     )
     parser.add_argument(
         '--fold',
         type=int,
-        help='What framework to manage'
+        choices=list(range(10)),
+        help='What fold out of 10 to launch'
     )
     parser.add_argument(
         '--run',
@@ -553,6 +638,20 @@ if __name__ == "__main__":
         const=True,
         default=False,
         help='Launches the run to sbatch'
+    )
+    parser.add_argument(
+        '--array_run',
+        type=str2bool,
+        nargs='?',
+        const=True,
+        default=False,
+        help='Launches the run to sbatch on an array fashion'
+    )
+    parser.add_argument(
+        '--max_active_runs',
+        type=int,
+        default=5,
+        help='maximum number of active runs for a batch array'
     )
     parser.add_argument(
         '--verbose',
@@ -572,7 +671,7 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         '--rundir',
-        default='/home/riverav/work/automlbenchmark_fork',
+        default='/home/riverav/work/automlbenchmark_new',
         help='The area from where to run'
     )
 
@@ -582,7 +681,13 @@ if __name__ == "__main__":
     else:
         logger.setLevel(logging.WARN)
 
+    # Check framewors
     frameworks = args.framework.split() if ' ' in args.framework else [args.framework]
+    valid_frameworks = [os.path.basename(path) for path in glob.glob('frameworks/*')]
+    for framework in frameworks:
+        if framework not in valid_frameworks:
+            raise Exception(f"Unsupported framework={framework}...")
+
     if args.benchmark:
         benchmarks = args.benchmark.split() if ' ' in args.benchmark else [args.benchmark]
     else:
@@ -609,8 +714,18 @@ if __name__ == "__main__":
     else :
         folds = np.arange(10)
 
+    # Can only run on array or normal mode
+    if args.run and args.array_run:
+        raise Exception('Only one can be specified --run or --array_run')
+    elif args.run:
+        run_mode = 'single'
+    elif args.array_run:
+        run_mode = 'array_' + str(args.max_active_runs)
+    else:
+        run_mode = None
+
     # Get the job status
-    jobs = get_job_status(frameworks, benchmarks, tasks, folds, args.partition, args.constraint, args.run, args.rundir)
+    jobs = get_job_status(frameworks, benchmarks, tasks, folds, args.partition, args.constraint, run_mode, args.rundir)
 
     # Print the reports if needed
     if args.problems:
