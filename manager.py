@@ -339,7 +339,17 @@ def launch_run(run_file, partition, constraint, rundir, run_mode):
     if partition == 'bosch_cpu-cascadelake':
         extra += ' --bosch'
 
-    if constraint == '1h8c':
+    if constraint == '1h1c':
+        memory = '12G'
+        # In the file .config/automlbenchmark/constraints.yaml 1 core is assigned
+        # but reallty in the cluster we provide 2
+        cores = 2
+    elif constraint == '8h1c':
+        memory = '12G'
+        # In the file .config/automlbenchmark/constraints.yaml 1 core is assigned
+        # but reallty in the cluster we provide 2
+        cores = 2
+    elif constraint == '1h8c':
         memory = '32G'
         cores = 8
     elif constraint == '1h4c':
@@ -616,7 +626,7 @@ if __name__ == "__main__":
     parser.add_argument(
         '--constraint',
         default='1h8c',
-        choices=['test', '1h4c', '1h8c'],
+        choices=['test', '1h4c', '1h8c', '1h1c', '8h1c'],
         help='What number o fcores and runtime is allowed'
     )
     parser.add_argument(
@@ -683,10 +693,10 @@ if __name__ == "__main__":
 
     # Check framewors
     frameworks = args.framework.split() if ' ' in args.framework else [args.framework]
-    valid_frameworks = [os.path.basename(path) for path in glob.glob('frameworks/*')]
-    for framework in frameworks:
-        if framework not in valid_frameworks:
-            raise Exception(f"Unsupported framework={framework}...")
+    #valid_frameworks = [os.path.basename(path) for path in glob.glob('frameworks/*')]
+    #for framework in frameworks:
+    #    if framework not in valid_frameworks:
+    #        raise Exception(f"Unsupported framework={framework}...")
 
     if args.benchmark:
         benchmarks = args.benchmark.split() if ' ' in args.benchmark else [args.benchmark]
