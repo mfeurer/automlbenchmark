@@ -121,6 +121,12 @@ autosklearn_dev:
   params:
     _save_artifacts: ['leaderboard', 'logs', 'models', 'models_predictions' ]
 
+autosklearn_memdebug:
+  version: 'memory_debug'
+  project: https://github.com/franchuterivera/auto-sklearn/tree/memory_debug
+  params:
+    _save_artifacts: ['leaderboard', 'logs', 'models', 'models_predictions' ]
+
 autoPyTorch:
   version: '0.0.2'
   project: https://github.com/automl/Auto-PyTorch/
