@@ -8,6 +8,7 @@ import time
 import subprocess
 import logging
 import glob
+import json
 
 import numpy as np
 import pandas as pd
@@ -389,6 +390,7 @@ def launch_run(run_file, partition, constraint, rundir, run_mode):
         )
         #_launch_sbatch_run(options, generate_cleanup_file(task, local_jobid, rundir))
 
+
 def _launch_sbatch_run(options, script):
     command = "sbatch {} {}".format(
         options,
@@ -432,6 +434,7 @@ def is_number(s):
         return True
     except ValueError:
         return False
+
 
 def get_job_status(frameworks, benchmarks, tasks, folds, partition, constraint, run_mode, rundir):
 
@@ -607,6 +610,118 @@ def complete_missing_csv():
     results['fold'] = results['fold'].astype('int32')
     results.to_csv("final.csv",index=False)
 
+
+def get_autosklearn_model_list(model_file):
+
+    if not os.path.exists(model_file):
+        logger.error(f"Could not find model file: {model_file}")
+        return []
+
+    pattern = re.compile(".*'classifier:__choice__': '(\w+)'.*")
+    model_list = []
+    for i, line in enumerate(open(model_file)):
+        match = re.match(pattern, line)
+        if match:
+            model_list.append(match.group(1))
+    return model_list
+
+
+def get_h2o_model_list(model_file):
+
+    # Read the json file
+    model_file = model_file.replace('full_models', 'models').replace('.zip', '.json')
+    if not os.path.exists(model_file):
+        logger.error(f"Could not find model file: {model_file}")
+        return []
+
+    if 'StackedEnsemble' not in model_file:
+        # Sometimes a model is better than the stack
+        model_file = os.path.basename(model_file).split('_')[0]
+        return [model_file]
+
+    model_list = []
+    parsed = json.load(open(model_file))
+    for i, params in enumerate(parsed['parameters']):
+        if not parsed['parameters'][i]['name'] == 'base_models':
+            continue
+        for model in parsed['parameters'][i]['actual_value']:
+            model_list.append(model['name'].split('_')[0])
+        break
+    return model_list
+
+
+def get_model_list(run_file):
+    "Tries to extract the list of models from a runfile"
+    name, ext = os.path.splitext(os.path.basename(run_file))
+    logfile = os.path.join('logs', name + '.out')
+    match = re.match("([\w-]+)_(small|medium|large|test)_([\dA-Za-z]+)_([.\w-]+)_(\d)", name)
+    if match is None:
+        logger.error(f"Could not match name={name}")
+        return []
+    framework, benchmark, constraint, task, fold = match.groups()
+
+    # If we cant file the model file, bail out
+    if not os.path.exists(logfile):
+        logger.error(f"Could not find log file: {logfile}")
+        return []
+
+    # Get the path where models where saved
+    pattern = re.compile(".*Scores\s*saved\s*to\s*`\/output\/(.*)\/scores\/results.csv.*")
+    result_file = None
+    for i, line in enumerate(open(logfile)):
+        match = re.match(pattern, line)
+        if match:
+            result_file = match.group(1)
+            break
+    if result_file is None:
+        logger.error(f"Could not extract result file from: {logfile}")
+        return []
+
+    # Extract per framework models
+    if 'autosklearn' in framework:
+        model_file = os.path.join('results', result_file, 'models', task, fold, 'models.txt')
+        return get_autosklearn_model_list(model_file)
+    elif 'H2O' in framework:
+        model_file = glob.glob(os.path.join('results', result_file, 'full_models', task, fold, '*.zip'))
+        if len(model_file) < 1:
+            print(f"Error while parsing {run_file}.. No model file found!")
+            return []
+        return get_h2o_model_list(model_file[-1])
+    else:
+        raise ValueError(f"No support for framework={framework}")
+
+def get_used_models_per_framework(jobs):
+    """
+    Returns a per framework dict with a dataframe of models used.
+    If more than 1 fold is provided, the average is taken
+    """
+    framework_models = {}
+    for framework, framework_dict in jobs.items():
+        rows = []
+        for benchmark, benchmark_dict in framework_dict.items():
+            for task, task_dict in benchmark_dict.items():
+                model_usage = {'benchmark':benchmark, 'task':task}
+                for fold, data in task_dict.items():
+                    run_file =  jobs[framework][benchmark][task][fold]['run_file']
+                    for model in get_model_list(run_file):
+                        if model not in model_usage:
+                            model_usage[model] = 1
+                        else:
+                            model_usage[model] += 1
+
+                # Calculate average
+                for key, value in model_usage.items():
+                    if key == 'task':continue
+                    if key == 'benchmark':continue
+                    model_usage[key] = value/len(task_dict.keys())
+
+                rows.append(model_usage)
+        framework_models[framework] = pd.DataFrame(rows)
+        print(framework_models[framework])
+        framework_models[framework].to_csv(f"{framework}_models.csv", index=False)
+    return framework_models
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Manages the run of the benchmark')
     parser.add_argument(
@@ -676,8 +791,16 @@ if __name__ == "__main__":
         type=str2bool,
         nargs='?',
         const=True,
-        default=True,
+        default=False,
         help='generates a problems dataframe'
+    )
+    parser.add_argument(
+        '--models',
+        type=str2bool,
+        nargs='?',
+        const=True,
+        default=False,
+        help='generates a models used dataframe'
     )
     parser.add_argument(
         '--rundir',
@@ -744,6 +867,10 @@ if __name__ == "__main__":
         logger.warn(problems)
         logger.warn("\n")
         problems.to_csv('problems.csv', index=False)
+
+    # Print models used
+    if args.models:
+        get_used_models_per_framework(jobs)
 
     # Get and print the normalized score
     logger.warn("\nCheck the file normalized_score.csv!")
