@@ -61,18 +61,14 @@ def run(dataset, config):
     n_jobs = config.framework_params.get('_n_jobs', config.cores)
     ml_memory_limit = config.framework_params.get('_ml_memory_limit', 'auto')
     ensemble_memory_limit = config.framework_params.get('_ensemble_memory_limit', 'auto')
+    if ensemble_memory_limit == 'auto':
+        ensemble_memory_limit = 1024
 
     # when memory is large enough, we should have:
     # (cores - 1) * ml_memory_limit_mb + ensemble_memory_limit_mb = config.max_mem_size_mb
-    total_memory_mb = system_memory_mb().total
+    total_memory_mb = min(system_memory_mb().total, config.max_mem_size_mb) - ensemble_memory_limit
     if ml_memory_limit == 'auto':
-        ml_memory_limit = max(min(config.max_mem_size_mb / n_jobs,
-                                  math.ceil(total_memory_mb / n_jobs)),
-                              3072)  # 3072 is autosklearn defaults
-    if ensemble_memory_limit == 'auto':
-        ensemble_memory_limit = max(math.ceil(ml_memory_limit - (total_memory_mb - config.max_mem_size_mb)),
-                                    math.ceil(ml_memory_limit / 3),  # default proportions
-                                    1024)  # 1024 is autosklearn defaults
+        ml_memory_limit = max(total_memory_mb / n_jobs, 3072)  # 3072 is autosklearn defaults
     log.info("Using %sMB memory per ML job and %sMB for ensemble job on a total of %s jobs.", ml_memory_limit, ensemble_memory_limit, n_jobs)
 
     log.warning("Using meta-learned initialization, which might be bad (leakage).")

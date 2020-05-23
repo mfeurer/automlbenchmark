@@ -15,9 +15,9 @@ fi
 #PIP install --no-cache-dir -r "https://raw.githubusercontent.com/automl/auto-sklearn/${VERSION}/requirements.txt"
 TARGET_DIR="$HERE/lib/autosklearn"
 if [[ ! -e "$TARGET_DIR" ]]; then
-    git clone https://github.com/franchuterivera/auto-sklearn.git $TARGET_DIR
+    git clone https://github.com/automl/auto-sklearn.git $TARGET_DIR
     cd "$TARGET_DIR"
-    git checkout memory_debug
+    git checkout development
     git log --name-status HEAD^..HEAD
     cd "$HERE"
 fi
