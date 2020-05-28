@@ -49,6 +49,9 @@ export benchmark={benchmark}
 export constraint={constraint}
 export task={task}
 export fold={fold}
+
+# Sleep a random number of seconds after init to be safe of run
+sleep {np.random.randint(low=0,high=30)}
 echo 'python runbenchmark.py {framework} {benchmark} {constraint} --task {task} --fold {fold} -m singularity --session {framework}_{benchmark}_{constraint}_{task}_{fold}'
 python runbenchmark.py {framework} {benchmark} {constraint} --task {task} --fold {fold} -m singularity --session {framework}_{benchmark}_{constraint}_{task}_{fold}
 echo "Deleting temporal folder $TMPDIR"
