@@ -39,6 +39,7 @@ def run(dataset, config):
     # TODO Some metrics are not yet implemented in framework
     metrics_mapping = dict(
         acc='accuracy',
+        bac='balanced_accuracy',
         auc='auc_metric',
         f1='auc_metric',
         logloss='cross_entropy',
@@ -87,7 +88,6 @@ def run(dataset, config):
         max_budget=config.max_runtime_seconds//2,
         max_runtime=config.max_runtime_seconds,
         log_level='info',
-        use_pynisher=False,
         min_workers=n_jobs,
         memory_limit_mb=ml_memory_limit,
         **training_params
