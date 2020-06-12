@@ -198,7 +198,7 @@ def check_if_crashed(run_file):
         'DUE TO TIME LIMIT',
         'MemoryError',
         'OutOfMemoryError',
-        'timeout',
+        'ValueError: Cannot compare configs that were run on different instances-seeds-budgets',
     ]
     with open(logfile, 'rb', 0) as file, mmap.mmap(file.fileno(), 0, access=mmap.ACCESS_READ) as s:
         for cause in causes:
@@ -395,6 +395,7 @@ def launch_run(run_file, partition, constraint, rundir, run_mode):
 
 
 def _launch_sbatch_run(options, script):
+    #command = "sbatch --spread-job {} {}".format(
     command = "sbatch {} {}".format(
         options,
         script
@@ -522,7 +523,7 @@ def get_job_status(frameworks, benchmarks, tasks, folds, partition, constraint, 
                                     status = 'Running'
                                 else:
                                     status = 'Failed'
-                                    if query_yes_no(f"For framework={framework} benchmark={benchmark} constraint={constraint} task={task} fold={fold} obtained: {jobs[framework][benchmark][task][fold]['results']}. Do you want to relaunch this run?"):
+                                    if True or query_yes_no(f"For framework={framework} benchmark={benchmark} constraint={constraint} task={task} fold={fold} obtained: {jobs[framework][benchmark][task][fold]['results']}. Do you want to relaunch this run?"):
                                         run_files.append(jobs[framework][benchmark][task][fold]['run_file'])
                                         status = 'Relaunched'
                     jobs[framework][benchmark][task][fold]['status'] = status
