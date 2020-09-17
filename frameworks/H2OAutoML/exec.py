@@ -37,6 +37,7 @@ def run(dataset: Dataset, config: TaskConfig):
     # Mapping of benchmark metrics to H2O metrics
     metrics_mapping = dict(
         acc='mean_per_class_error',
+        balacc='mean_per_class_error',
         auc='AUC',
         logloss='logloss',
         mae='mae',

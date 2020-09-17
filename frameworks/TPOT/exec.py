@@ -14,6 +14,7 @@ from tpot import TPOTClassifier, TPOTRegressor
 
 from frameworks.shared.callee import call_run, result, output_subdir, utils
 
+from sklearn.metrics import balanced_accuracy_score, make_scorer
 
 log = logging.getLogger(__name__)
 
@@ -23,9 +24,11 @@ def run(dataset, config):
 
     is_classification = config.type == 'classification'
     # Mapping of benchmark metrics to TPOT metrics
+    my_custom_scorer = make_scorer(balanced_accuracy_score)
     metrics_mapping = dict(
         acc='accuracy',
         auc='roc_auc',
+        balacc=my_custom_scorer,
         f1='f1',
         logloss='neg_log_loss',
         mae='neg_mean_absolute_error',
