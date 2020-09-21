@@ -79,7 +79,7 @@ def run(dataset, config):
     # TODO: do we need to set per_run_time_limit too?
     estimator = AutoSklearnClassifier if is_classification else AutoSklearnRegressor
 
-    if version.parse(autosklearn.__version__) >= version.parse("0.8"):
+    if version.parse(autosklearn.__version__) >= version.parse("0.7"):
         constr_extra_params = dict(metric=perf_metric)
         fit_extra_params = {}
     else:

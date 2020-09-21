@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 HERE=$(dirname "$0")
 AMLB_DIR="$1"
-VERSION="0.9.0"
+VERSION="0.6.0"
 REPO=${3:-"https://github.com/automl/auto-sklearn.git"}
 PKG=${4:-"auto-sklearn"}
 if [[ "$VERSION" == "latest" ]]; then
@@ -16,7 +16,7 @@ if [[ -x "$(command -v apt-get)" ]]; then
 fi
 
 PIP install --no-cache-dir liac-arff packaging numpy
-PIP install --no-cache-dir liac-arff packaging numpy
+PIP install smac==0.8
 if [[ "$VERSION" =~ ^[0-9] ]]; then
     PIP install --no-cache-dir ${PKG}==${VERSION}
 else

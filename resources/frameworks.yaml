@@ -78,6 +78,18 @@ autosklearn_090:
   version: '0.9.0'
   project: https://automl.github.io/auto-sklearn/
 
+autosklearn_0100:
+  version: '0.10.0'
+  project: https://automl.github.io/auto-sklearn/
+
+autosklearn_0100_mem:
+  version: '0.10.0'
+  project: https://automl.github.io/auto-sklearn/
+
+autosklearn_090_newmem:
+  version: '0.9.0'
+  project: https://automl.github.io/auto-sklearn/
+
 autosklearn:
   version: '0.8.0'
   project: https://automl.github.io/auto-sklearn/

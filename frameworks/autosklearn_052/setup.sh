@@ -15,6 +15,7 @@ if [[ -x "$(command -v apt-get)" ]]; then
     SUDO apt-get install -y build-essential swig
 fi
 
+PIP install --no-cache-dir liac-arff packaging numpy
 PIP install xgboost==0.80
 if [[ "$VERSION" =~ ^[0-9] ]]; then
     PIP install xgboost==0.80 scikit-learn==0.19 ConfigSpace==0.4.6 numpy
