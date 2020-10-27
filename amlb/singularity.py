@@ -41,7 +41,7 @@ class SingularityBenchmark(ContainerBenchmark):
         if branch != 'master':
             tags.append(branch)
         tag = re.sub(r"([^\w.-])", '.', '-'.join(tags))
-        return f"{author}{image}{separator}{tag}"
+        return f"{author}{image}{separator}{tag}".lower()
 
     def __init__(self, framework_name, benchmark_name, constraint_name):
         """

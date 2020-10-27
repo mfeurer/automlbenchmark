@@ -2,3 +2,17 @@ requests>=2.10
 tabulate
 future
 colorama>=0.3.8
+boto3>=1.9,<2.0
+liac-arff>=2.4,<3.0
+numpy>=1.15,<2.0
+pandas>=0.23,<1.0
+psutil>=5.4,<6.0
+ruamel.yaml>=0.15,<1.0
+scipy>=1.1,<1.3
+openml==0.10.2
+scikit-learn>=0.22.2
+packaging
+pyyaml
+tqdm
+paramiko
+scp

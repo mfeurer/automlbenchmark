@@ -15,6 +15,7 @@ os.environ['OPENBLAS_NUM_THREADS'] = '1'
 os.environ['MKL_NUM_THREADS'] = '1'
 import autosklearn
 from autosklearn.estimators import AutoSklearnClassifier, AutoSklearnRegressor
+from autosklearn.experimental.askl2 import AutoSklearn2Classifier
 import autosklearn.metrics as metrics
 from packaging import version
 
@@ -24,7 +25,7 @@ log = logging.getLogger(__name__)
 
 
 def run(dataset, config):
-    log.info("\n**** AutoSklearn {} ****\n".format(autosklearn.__version__))
+    log.info("\n**** AutoSklearn2.0 {} ****\n".format(autosklearn.__version__))
     warnings.simplefilter(action='ignore', category=FutureWarning)
     warnings.simplefilter(action='ignore', category=DeprecationWarning)
 
@@ -81,7 +82,7 @@ def run(dataset, config):
 
     log.warning("Using meta-learned initialization, which might be bad (leakage).")
     # TODO: do we need to set per_run_time_limit too?
-    estimator = AutoSklearnClassifier if is_classification else AutoSklearnRegressor
+    estimator = AutoSklearn2Classifier if is_classification else AutoSklearnRegressor
 
     if version.parse(autosklearn.__version__) >= version.parse("0.8"):
         constr_extra_params = dict(metric=perf_metric)

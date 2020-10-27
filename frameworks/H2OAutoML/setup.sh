@@ -4,7 +4,9 @@ H2O_REPO=${2:-"https://h2o-release.s3.amazonaws.com/h2o"}
 echo "setting up H2O version $VERSION"
 
 HERE=$(dirname "$0")
-. ${HERE}/../shared/setup.sh
+# creating local venv
+. $HERE/../shared/setup.sh $HERE
+
 if [[ -x "$(command -v apt-get)" ]]; then
     SUDO apt-get update
     SUDO apt-get install -y openjdk-8-jdk
@@ -35,10 +37,12 @@ elif [[ "$VERSION" = "nightly" ]]; then
     h2o_package="${H2O_REPO}/master/${NIGHTLY}/Python/h2o-${VERSION}-py2.py3-none-any.whl"
 fi
 
-if [[ -n "$h2o_package" ]]; then
-    echo "installing H2O-3 $VERSION"
-    PIP install --no-cache-dir -U ${h2o_package}
-else
-    echo "not installing any H2O release version"
-fi
+PIP uninstall  --yes h2o
 
+#if [[ -n "$h2o_package" ]]; then
+#    echo "installing H2O-3 $VERSION"
+#    PIP install --no-cache-dir -U ${h2o_package}
+#else
+#    echo "not installing any H2O release version"
+#fi
+PIP install -f http://h2o-release.s3.amazonaws.com/h2o/latest_stable_Py.html h2o

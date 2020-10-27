@@ -48,22 +48,54 @@ TunedRandomForest:
 ### AutoML frameworks
 AutoGluon:
   version: "0.0.12"
-  project: https://autogluon.mxnet.io
-#  params:
-#    _save_artifacts: ['leaderboard', 'models', 'info']
+  #project: https://autogluon.mxnet.io
+  project: https://github.com/franchuterivera/autogluon.git
+  params:
+    _save_artifacts: ['leaderboard', 'overfit']
 
 AutoGluon_best:
   extends: AutoGluon
   description: "provides the most accurate overall predictor"
   params:
     presets: best_quality
+    _save_artifacts: ['leaderboard', 'overfit']
 
 autosklearn:
-  version: '0.8.0'
+  version: '0.10.0'
   project: https://automl.github.io/auto-sklearn/
-#  params:
-#    _save_artifacts: ['models']
-#    _n_jobs: 1
+  params:
+    _save_artifacts: ['models', 'overfit', 'debug']
+
+autosklearn2:
+  version: '0.10.0'
+  project: https://automl.github.io/auto-sklearn/
+  params:
+    _save_artifacts: ['models', 'overfit', 'debug']
+
+autosklearnbbccv_ensemble:
+  version: 'ensemble'
+  project: https://automl.github.io/auto-sklearn/
+  params:
+    _save_artifacts: ['models', 'overfit', 'debug']
+
+autosklearnbbccv_model:
+  version: 'model'
+  project: https://automl.github.io/auto-sklearn/
+  params:
+    _save_artifacts: ['models', 'overfit', 'debug']
+
+autosklearnnoensemble:
+  extends: autosklearn
+  params:
+    _save_artifacts: ['models', 'overfit', 'debug']
+    ensemble_size: 0
+
+autosklearncv:
+  extends: autosklearn
+  params:
+    _save_artifacts: ['models', 'overfit', 'debug']
+    resampling_strategy: 'cv'
+    resampling_strategy_arguments: {'folds': 5}
 
 AutoWEKA:
   version: '2.6'
@@ -96,8 +128,8 @@ H2OAutoML:
   version: '3.30.0.4'
   setup_args: 'zahradnik'
   project: http://docs.h2o.ai/h2o/latest-stable/h2o-docs/automl.html
-#  params:
-#    _save_artifacts: ['leaderboard', 'logs', 'models', 'models_predictions', 'mojos']
+  params:
+    _save_artifacts: ['overfit',  'leaderboard']
 
 hyperoptsklearn:
   version: 'latest'

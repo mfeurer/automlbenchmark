@@ -1,3 +1,5 @@
+from operator import itemgetter
+import numpy as np
 import logging
 import os
 import shutil
@@ -8,9 +10,10 @@ import matplotlib
 import pandas as pd
 matplotlib.use('agg')  # no need for tk
 
-from autogluon.task.tabular_prediction.tabular_prediction import TabularPrediction as task
-from autogluon.utils.tabular.utils.savers import save_pd, save_pkl
-import autogluon.utils.tabular.metrics as metrics
+from autogluon.tabular import TabularPrediction as task
+from autogluon.core.utils.savers import save_pkl, save_pd
+import autogluon.tabular.metrics as metrics
+from autogluon.tabular.constants import BINARY, MULTICLASS, REGRESSION
 
 from frameworks.shared.callee import call_run, result, output_subdir, utils
 
@@ -72,7 +75,8 @@ def run(dataset, config):
     with pd.option_context('display.max_rows', None, 'display.max_columns', None, 'display.width', 1000):
         print(leaderboard)
 
-    save_artifacts(predictor, leaderboard, config)
+    overfit_frame = generate_overfit_artifacts(predictor, test)
+    save_artifacts(predictor, leaderboard, config, overfit_frame)
 
     num_models_trained = len(leaderboard)
     num_models_ensemble = len(predictor._trainer.get_minimum_model_set(predictor._trainer.model_best))
@@ -89,11 +93,15 @@ def run(dataset, config):
                   predict_duration=predict.duration)
 
 
-def save_artifacts(predictor, leaderboard, config):
+def save_artifacts(predictor, leaderboard, config, overfit_frame):
     artifacts = config.framework_params.get('_save_artifacts', ['leaderboard'])
     try:
         models_dir = output_subdir("models", config)
         shutil.rmtree(os.path.join(models_dir, "utils"), ignore_errors=True)
+
+        if 'overfit' in artifacts:
+            overfit_file = os.path.join(output_subdir('overfit', config), 'overfit.csv')
+            overfit_frame.to_csv(overfit_file)
 
         if 'leaderboard' in artifacts:
             save_pd.save(path=os.path.join(models_dir, "leaderboard.csv"), df=leaderboard)
@@ -116,6 +124,61 @@ def save_artifacts(predictor, leaderboard, config):
 
     except Exception:
         log.warning("Error when saving artifacts.", exc_info=True)
+
+
+def generate_overfit_artifacts(predictor, test_data):
+    dataframe = []
+    X, y = predictor._learner.extract_label(test_data)
+    X = predictor._learner.transform_features(X)
+    y = predictor._learner.label_cleaner.transform(y)
+    if predictor._learner.problem_type == MULTICLASS:
+        y = y.fillna(-1)
+
+    models = []
+    train_scores = []
+    val_scores = []
+    test_scores = []
+
+    models_info = predictor._trainer.get_models_info()
+    for model, info in models_info.items():
+        try:
+            models.append(model)
+            if info['train_score']:
+                train_scores.append(info['train_score'])
+            else:
+                train_scores.append(np.inf)
+            val_scores.append(info['val_score'])
+            actual_model = predictor._trainer.load_model(model)
+            test_scores.append(actual_model.score(X, y))
+        except Exception as e:
+            print(f"failed with {e} on {model}")
+
+    individual_models = [(m, train, val, test) for m, train, val, test in  zip(models, train_scores, val_scores, test_scores) if 'ensemble' not in m]
+    m, train, val, test = sorted(individual_models, key=itemgetter(2))[-1]
+
+    dataframe.append({
+        'model': 'best_individual_model' + m,
+        'test': test,
+        'val': val,
+        'train': train,
+    })
+
+    best_ensemble_index = np.argmax(val_scores)
+    dataframe.append({
+        'model': 'best_ensemble_model' + models[best_ensemble_index],
+        'test': test_scores[best_ensemble_index],
+        'val': val_scores[best_ensemble_index],
+        'train': train_scores[best_ensemble_index],
+    })
+
+    # maybe val also but train, I don't know rick
+    dataframe.append({
+        'model': 'overall',
+        'test': predictor.evaluate(test_data),
+        'val': np.inf,
+        'train': predictor.info()['best_model_score_val'],
+    })
+    return pd.DataFrame(dataframe)
 
 
 if __name__ == '__main__':

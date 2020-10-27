@@ -96,6 +96,9 @@ def run(dataset, config):
                              ensemble_memory_limit=ensemble_memory_limit,
                              delete_tmp_folder_after_terminate=False,
                              delete_output_folder_after_terminate=False,
+                             bbc_cv_strategy='model_based',
+                             bbc_cv_sample_size=0.20,
+                             bbc_cv_n_bootstrap=100,
                              seed=config.seed,
                              **constr_extra_params,
                              **training_params)

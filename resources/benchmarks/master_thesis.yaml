@@ -1,0 +1,32 @@
+---
+
+- name: cnae-9
+  openml_task_id: 9981
+
+- name: Fashion-MNIST
+  openml_task_id: 146825
+
+- name: kr-vs-kp
+  openml_task_id: 3
+
+- name: vehicle
+  openml_task_id: 53
+
+- name: Airlines
+  openml_task_id: 189354
+
+- name: connect-4
+  openml_task_id: 146195
+
+- name: segment
+  openml_task_id: 146822
+
+- name: Australian
+  openml_task_id: 146818
+
+- name: adult
+  openml_task_id: 7592
+
+- name: Albert
+  openml_task_id: 189356
+

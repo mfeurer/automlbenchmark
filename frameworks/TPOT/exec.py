@@ -14,6 +14,7 @@ from tpot import TPOTClassifier, TPOTRegressor
 
 from frameworks.shared.callee import call_run, result, output_subdir, utils
 
+from sklearn.metrics import balanced_accuracy_score, make_scorer
 
 log = logging.getLogger(__name__)
 
@@ -23,9 +24,11 @@ def run(dataset, config):
 
     is_classification = config.type == 'classification'
     # Mapping of benchmark metrics to TPOT metrics
+    my_custom_scorer = make_scorer(balanced_accuracy_score)
     metrics_mapping = dict(
         acc='accuracy',
         auc='roc_auc',
+        balacc=my_custom_scorer,
         f1='f1',
         logloss='neg_log_loss',
         mae='neg_mean_absolute_error',
@@ -68,7 +71,9 @@ def run(dataset, config):
         # TPOT throws a RuntimeError if the optimized pipeline does not support `predict_proba`.
         probabilities = "predictions"  # encoding is handled by caller in `__init__.py`
 
-    save_artifacts(tpot, config)
+    overfit_frame = generate_overfit_artifacts(tpot, X_train, y_train, X_test, y_test)
+
+    save_artifacts(tpot, config, overfit_frame)
 
     return result(output_file=config.output_predictions_file,
                   predictions=predictions,
@@ -79,12 +84,15 @@ def run(dataset, config):
                   training_duration=training.duration)
 
 
-def save_artifacts(estimator, config):
+def save_artifacts(estimator, config, overfit_frame):
     try:
         log.debug("All individuals :\n%s", list(estimator.evaluated_individuals_.items()))
         models = estimator.pareto_front_fitted_pipelines_
         hall_of_fame = list(zip(reversed(estimator._pareto_front.keys), estimator._pareto_front.items))
         artifacts = config.framework_params.get('_save_artifacts', False)
+        if 'overfit' in artifacts:
+            overfit_file = os.path.join(output_subdir('overfit', config), 'overfit.csv')
+            overfit_frame.to_csv(overfit_file)
         if 'models' in artifacts:
             models_file = os.path.join(output_subdir('models', config), 'models.txt')
             with open(models_file, 'w') as f:
@@ -96,6 +104,43 @@ def save_artifacts(estimator, config):
                     ), stream=f)
     except Exception:
         log.debug("Error when saving artifacts.", exc_info=True)
+
+
+def generate_overfit_artifacts(estimator, X_train, y_train, X_test, y_test):
+    dataframe = []
+
+
+    # Best validation individual
+    val_individual = max([v['internal_cv_score'] for k, v in estimator.evaluated_individuals_.items()])
+
+
+    run_keys = [v for v in estimator.automl_.runhistory_.data.values() if v.additional_info and 'train_loss' in v.additional_info]
+    best_validation_index = np.argmin([v.cost for v in run_keys])
+    val_score = estimator.automl_._metric._optimum - (estimator.automl_._metric._sign * run_keys[best_validation_index].cost)
+    train_score = estimator.automl_._metric._optimum - (estimator.automl_._metric._sign * run_keys[best_validation_index].additional_info['train_loss'])
+    test_score = estimator.automl_._metric._optimum - (estimator.automl_._metric._sign * run_keys[best_validation_index].additional_info['test_loss'])
+    dataframe.append({
+        'model': 'best_individual_model',
+        'test': test_score,
+        'val': val_score,
+        'train': train_score,
+    })
+
+    best_ensemble_index = np.argmax([v['ensemble_optimization_score'] for v in estimator.automl_.ensemble_performance_history])
+    dataframe.append({
+        'model': 'best_ensemble_model',
+        'test': estimator.automl_.ensemble_performance_history[best_ensemble_index]['ensemble_test_score'],
+        'val': np.inf,
+        'train': estimator.automl_.ensemble_performance_history[best_ensemble_index]['ensemble_optimization_score'],
+    })
+
+    dataframe.append({
+        'model': 'rescore_final',
+        'test': estimator.score(X_test, y_test),
+        'val': np.inf,
+        'train': estimator.score(X_train, y_train),
+    })
+    return pd.DataFrame(dataframe)
 
 
 if __name__ == '__main__':

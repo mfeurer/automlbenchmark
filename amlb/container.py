@@ -54,7 +54,7 @@ class ContainerBenchmark(Benchmark):
         self.custom_commands = ""
 
     def _container_image_name(self, branch=None):
-        return self.image_name(self.framework_def, branch)
+        return self.image_name(self.framework_def, branch).lower()
 
     def _validate(self):
         if self.parallel_jobs == 0 or self.parallel_jobs > rconfig().max_parallel_jobs:
