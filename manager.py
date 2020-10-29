@@ -124,6 +124,8 @@ def create_singularity_image(framework: str) -> None:
         f"git rev-parse --abbrev-ref HEAD",
     ], shell=True, stdout=subprocess.PIPE)
     current_branch = command.stdout.decode('utf-8').strip()
+    if 'master' in current_branch:
+        raise ValueError('Using the master branch is not yet supported!')
 
     author = get_author_from_benchmark()
     valid_frameworks = get_framework_information()
@@ -149,8 +151,8 @@ singularity pull frameworks/{framework}/{framework.lower()}_{version}-stable.sif
 
     # Check if things went ok
     sif_file = f"frameworks/{framework}/{framework.lower()}_{version}-stable.sif"
-    if os.path.exists(sif_file):
-        raise Exception(f"Failed to generate the sif file")
+    if not os.path.exists(sif_file):
+        raise Exception(f"Failed to generate the sif file {sif_file}")
     return True
 
 
@@ -413,7 +415,7 @@ def create_run_dir_area(run_dir: typing.Optional[str], args: typing.Any
         file_c.write("\n")
         file_c.write("frameworks:\n")
         file_c.write("  definition_file:\n")
-        file_c.write("    " + '- \'{root}/resources/frameworks.yaml\'' + "\n")
+        #file_c.write("    " + '- \'{root}/resources/frameworks.yaml\'' + "\n")
         file_c.write("    " + '- \'{user}/frameworks.yaml\'' + "\n")
     remote_put('/tmp/config.yaml', f"{run_dir}//config.yaml")
 
@@ -455,6 +457,8 @@ source {ENVIRONMENT_PATH}
 cd {AUTOMLBENCHMARK}
 if [ -z "$SLURM_ARRAY_TASK_ID" ]; then export TMPDIR=/tmp/{framework}_{benchmark}_{constraint}_{task}_{fold}_$SLURM_JOB_ID; else export TMPDIR=/tmp/{framework}_{benchmark}_{constraint}_{task}_{fold}$SLURM_ARRAY_JOB_ID'_'$SLURM_ARRAY_TASK_ID; fi
 echo TMPDIR=$TMPDIR
+export XDG_CACHE_HOME=$TMPDIR
+echo XDG_CACHE_HOME=$XDG_CACHE_HOME
 mkdir -p $TMPDIR
 export SINGULARITY_BINDPATH="$TMPDIR:/tmp"
 
@@ -555,7 +559,7 @@ def norm_score(
         return score
     zero = get_results('constantpredictor', benchmark, constraint, task, fold, run_dir)
     if zero is None or not is_number(zero):
-        logger.warn(f"No constantpredictor result for for benchmark={benchmark}")
+        logger.debug(f"No constantpredictor result for for benchmark={benchmark}")
         return score
     one = get_results('RandomForest', benchmark, constraint, task, fold, run_dir)
     if one is None or not is_number(one):
@@ -798,7 +802,7 @@ echo "Job started at: `date`"
     return name
 
 
-def are_resource_available_to_run(partition: str, min_cpu_free=128):
+def are_resource_available_to_run(partition: str, min_cpu_free=128, max_total_runs=50):
     """
     Query slurm to make sure we can launch jobs
 
@@ -812,8 +816,15 @@ def are_resource_available_to_run(partition: str, min_cpu_free=128):
     #    stdout=subprocess.PIPE
     #)
     #result = result.stdout.decode('utf-8')
+
+    # Also, account for a max total active runs
+    cmd = f"squeue --format=\"%.50j\" --noheader -u {USER}"
+    total_runs = remote_run(cmd)
+    if len(total_runs) > max_total_runs:
+        return False
+
     for i, line in enumerate(remote_run('sfree')):
-        if partition in line:
+        if partition in line and 'test' not in line:
             status  = re.split('\s+',
                                line.lstrip().rstrip())
             return int(status[3]) > min_cpu_free
@@ -861,22 +872,24 @@ def launch_run(
     elif args.run_mode == 'single':
         timestamp = time.strftime("%Y.%m.%d-%H.%M.%S")
         for task in run_files:
-            if are_resource_available_to_run(partition=args.partition, min_cpu_free = 200):
+            if are_resource_available_to_run(partition=args.partition, min_cpu_free = 10) or True:
                 name, ext = os.path.splitext(os.path.basename(task))
                 this_extra = extra + f" -p {args.partition} -t 0{max_hours}:00:00 --mem {args.memory} -c {args.cores} --job-name {name} -o {os.path.join(run_dir, 'logs', name + '_'+ timestamp + '.out')}"
                 _launch_sbatch_run(this_extra, task)
             else:
                 logger.warn(f"Skip {task} as there are no more free resources... try again later!")
+            # Wait 2 sec to update running job
+            time.sleep(2)
     elif args.run_mode == 'interactive':
         timestamp = time.strftime("%Y.%m.%d-%H.%M.%S")
         while len(run_files) > 0:
-            if are_resource_available_to_run(partition=args.partition, min_cpu_free = 400):
+            if are_resource_available_to_run(partition=args.partition, min_cpu_free = 128):
                 task = run_files.pop()
                 name, ext = os.path.splitext(os.path.basename(task))
                 this_extra = extra + f" -p {args.partition} -t 0{max_hours}:00:00 --mem {args.memory} -c {args.cores} --job-name {name} -o {os.path.join(run_dir, 'logs', name + '_'+ timestamp + '.out')}"
                 _launch_sbatch_run(this_extra, task)
-                # Wait 1 sec for the benchmark to be empty
-                time.sleep(1)
+                # Wait 2 sec for the benchmark to be empty
+                time.sleep(2)
             else:
                 print(".", end="", flush=True)
                 time.sleep(60)
@@ -1460,7 +1473,8 @@ if __name__ == "__main__":
             )
 
     # Get what framework the user wants to run
-    validate_framework(args.framework)
+    if not args.run_dir:
+        validate_framework(args.framework)
 
     # Make sure the run_dir has the desired information
     run_dir = create_run_dir_area(
