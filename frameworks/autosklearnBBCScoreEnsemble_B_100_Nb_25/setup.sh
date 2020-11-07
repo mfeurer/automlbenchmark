@@ -20,7 +20,7 @@ TARGET_DIR="${HERE}/lib/${PKG}"
 rm -Rf ${TARGET_DIR}
 git clone ${REPO} ${TARGET_DIR}
 cd ${TARGET_DIR}
-git checkout bbc-cv
+git checkout autosklearnBBCScoreEnsemble
 cd ${HERE}
 PIP install -r ${TARGET_DIR}/requirements.txt
 PIP install -e ${TARGET_DIR}

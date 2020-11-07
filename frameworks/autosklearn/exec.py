@@ -134,12 +134,31 @@ def generate_overfit_artifacts(estimator, X_train, y_train, X_test, y_test):
         'train': train_score,
     })
 
+    best_test_index = np.argmin([v.additional_info['test_loss'] for v in run_keys])
+    val_score2 = estimator.automl_._metric._optimum - (estimator.automl_._metric._sign * run_keys[best_test_index].cost)
+    train_score2 = estimator.automl_._metric._optimum - (estimator.automl_._metric._sign * run_keys[best_test_index].additional_info['train_loss'])
+    test_score2 = estimator.automl_._metric._optimum - (estimator.automl_._metric._sign * run_keys[best_test_index].additional_info['test_loss'])
+    dataframe.append({
+        'model': 'best_ever_test_score_individual_model',
+        'test': test_score2,
+        'val': val_score2,
+        'train': train_score2,
+    })
+
     best_ensemble_index = np.argmax([v['ensemble_optimization_score'] for v in estimator.automl_.ensemble_performance_history])
     dataframe.append({
         'model': 'best_ensemble_model',
         'test': estimator.automl_.ensemble_performance_history[best_ensemble_index]['ensemble_test_score'],
         'val': np.inf,
         'train': estimator.automl_.ensemble_performance_history[best_ensemble_index]['ensemble_optimization_score'],
+    })
+
+    best_ensemble_index_test = np.argmax([v['ensemble_test_score'] for v in estimator.automl_.ensemble_performance_history])
+    dataframe.append({
+        'model': 'best_ever_test_score_ensemble_model',
+        'test': estimator.automl_.ensemble_performance_history[best_ensemble_index_test]['ensemble_test_score'],
+        'val': np.inf,
+        'train': estimator.automl_.ensemble_performance_history[best_ensemble_index_test]['ensemble_optimization_score'],
     })
 
     try:
@@ -181,6 +200,9 @@ def save_artifacts(estimator, config, overfit_frame):
                 dst = filename.replace(tmp_directory, debug_dir+'/')
                 os.makedirs(os.path.dirname(dst), exist_ok=True)
                 copyfile(filename, dst)
+            # save the ensemble performance history file
+            ensemble_performance_frame = pd.DataFrame(estimator.automl_.ensemble_performance_history)
+            ensemble_performance_frame.to_csv(os.path.join(debug_dir, 'ensemble_history.csv'))
     except Exception as e:
         log.debug("Error when saving artifacts= {e}.".format(e), exc_info=True)
 

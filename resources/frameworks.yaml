@@ -66,6 +66,14 @@ autosklearn:
   params:
     _save_artifacts: ['models', 'overfit', 'debug']
 
+autosklearnBBCScoreEnsemble_B_100_Nb_25:
+  version: 'B_100_Nb_25'
+  project: https://automl.github.io/auto-sklearn/
+  params:
+    _save_artifacts: ['models', 'overfit', 'debug']
+    bbc_cv_sample_size: 0.25
+    bbc_cv_n_bootstrap: 100
+
 autosklearn2:
   version: '0.10.0'
   project: https://automl.github.io/auto-sklearn/

@@ -55,7 +55,7 @@ AUTOMLBENCHMARK = '/home/riverav/AUTOML_BENCHMARK/automlbenchmark_fork'
 #assert os.access(BASE_PATH, os.W_OK), f"Cannot access the base path {BASE_PATH}"
 
 # A memory mapping from SLURM to automlbenchmakr
-MEMORY = {'12G': 12288, '32G': 32768, '6G': 4096}
+MEMORY = {'12G': 12288, '32G': 32768, '8G': 4096}
 
 # Stablish a nested connection to kisba1
 USER = 'riverav'
@@ -1487,7 +1487,7 @@ if __name__ == "__main__":
         '-m',
         '--memory',
         default='32G',
-        choices=['12G', '32G', '6G'],
+        choices=['12G', '32G', '8G'],
         help='the ammount of memory to allocate to a job'
     )
     parser.add_argument(
@@ -1500,15 +1500,15 @@ if __name__ == "__main__":
     parser.add_argument(
         '--binary_metric',
         #default="['acc']",
-        #default="['balacc', 'auc', 'acc']",
-        default="['auc', 'logloss', 'acc']",
+        default="['balacc', 'auc', 'acc']",
+        #default="['auc', 'logloss', 'acc']",
         help='What metric set to use. Notice that it has to be a string'
     )
     parser.add_argument(
         '--multiclass_metric',
-        #default="['balacc', 'logloss', 'acc']",
+        default="['balacc', 'logloss', 'acc']",
         #default="['acc']",
-        default="['logloss', 'acc']",
+        #default="['logloss', 'acc']",
         help='What metric set to use. Notice that it has to be a string'
     )
     parser.add_argument(
