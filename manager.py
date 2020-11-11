@@ -1,27 +1,32 @@
 import argparse
-from random import randrange
 import collections
+import glob
+import json
+import logging
 import mmap
 import os
 import re
-import time
-import subprocess
 import socket
-import logging
-import glob
-import json
+import subprocess
+import tempfile
+import time
 import typing
-import sys
-import yaml
-
-import paramiko
-from scp import SCPClient
-
-from shutil import copyfile
+import uuid
+from random import randrange
 
 import numpy as np  # type: ignore
+
 import openml
+
 import pandas as pd  # type: ignore
+
+import paramiko
+
+from scp import SCPClient
+
+import yaml
+
+
 pd.set_option('display.width', 1000)
 pd.options.display.max_colwidth = 200
 
@@ -46,15 +51,14 @@ logger.addHandler(ch)
 ENVIRONMENT_PATH = '/home/riverav/work/venv/bin/activate'
 
 # The base path where we expect all runs to reside
-#BASE_PATH = '/home/eggenspk/AUTOML_BENCHMARK/'
-BASE_PATH = '/home/riverav/AUTOML_BENCHMARK_TEST/'
+BASE_PATH = '/home/riverav/AUTOML_BENCHMARK/'
 
 # The remote location of the benchmark
-AUTOMLBENCHMARK = '/home/eggenspk/AUTOML_BENCHMARK/automlbenchmark_fork_BK'
+AUTOMLBENCHMARK = '/home/riverav/AUTOML_BENCHMARK/automlbenchmark_fork'
 #assert os.access(BASE_PATH, os.W_OK), f"Cannot access the base path {BASE_PATH}"
 
 # A memory mapping from SLURM to automlbenchmakr
-MEMORY = {'12G': 12288, '32G': 32768}
+MEMORY = {'12G': 12288, '32G': 32768, '8G': 4096}
 
 # Stablish a nested connection to kisba1
 USER = 'riverav'
@@ -65,7 +69,8 @@ VM.load_system_host_keys()
 VM.set_missing_host_key_policy(paramiko.AutoAddPolicy())
 VM.connect(hostname='132.230.166.39', username=USER, look_for_keys=False)
 vmtransport = VM.get_transport()
-dest_addr = ('10.5.166.92', 22)  # kisbat
+INTERNAL = '10.5.166.221'
+dest_addr = (INTERNAL, 22)  # kisbat
 local_addr = ('132.230.166.39', 22)  # aadlogin
 vmchannel = vmtransport.open_channel("direct-tcpip", dest_addr, local_addr)
 
@@ -73,7 +78,7 @@ vmchannel = vmtransport.open_channel("direct-tcpip", dest_addr, local_addr)
 SSH = paramiko.SSHClient()
 SSH.load_system_host_keys()
 SSH.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-SSH.connect('10.5.166.92', username=USER, sock=vmchannel)
+SSH.connect(INTERNAL, username=USER, sock=vmchannel)
 
 ############################################################################
 #                               FUNCTIONS
@@ -130,19 +135,32 @@ def create_singularity_image(framework: str) -> None:
 
     author = get_author_from_benchmark()
     valid_frameworks = get_framework_information()
-    version = valid_frameworks[framework]['version'].replace('-', '_')
+    version = valid_frameworks[framework]['version'].replace('-', '_').lower()
 
     run_file = 'generate_sif.sh'
+    # There are two ways to generate a local sif image from a docker image
+    # https://github.com/hpcng/singularity/issues/1537
+    # https://www.nas.nasa.gov/hecc/support/kb/converting-docker-images-to-singularity-for-use-on-pleiades_643.html
+    temp_sif_name = os.path.join(
+        tempfile.gettempdir(),
+        str(uuid.uuid1(clock_seq=os.getpid())),
+    )
     command = f"""
 #!/bin/bash
 #source {ENVIRONMENT_PATH}
 if [[ "$(docker images -q {author}/{framework.lower()}:{version}-stable 2> /dev/null)" == "" ]]; then
     echo "Please prese yes/enter to create the docker image"
     python runbenchmark.py {framework} -m docker -s only
-    docker tag {author}/{framework.lower()}:{version}-{current_branch}  {author}/{framework.lower()}:{version}-stable
-    docker push  {author}/{framework.lower()}:{version}-stable
 fi
-singularity pull frameworks/{framework}/{framework.lower()}_{version}-stable.sif docker://{author}/{framework.lower()}:{version}-stable
+docker save {author}/{framework.lower()}:{version}-dev -o {temp_sif_name}
+singularity build frameworks/{framework}/{framework.lower()}_{version}-stable.sif docker-archive://{temp_sif_name}
+cd frameworks/{framework}/
+# Compatibility with development images
+ln -sf {framework.lower()}_{version}-stable.sif {framework.lower()}_{version}-dev.sif
+# Compatibility with stable images
+ln -sf {framework.lower()}_{version}-stable.sif {framework.lower()}_{version}_stable.sif
+cd ../..
+rm temp_sif_name
     """
     with open(run_file, 'w') as f:
         f.write(command)
@@ -175,7 +193,7 @@ def validate_framework(framework: str) -> None:
         raise ValueError(f"We expect that the framework={framework} will be in the "
                          "{framework_file} file. This is required by automlbenchmark")
     version = valid_frameworks[framework]['version'].replace('-', '_')
-    sif_file = f"frameworks/{framework}/{framework.lower()}_{version}-stable.sif"
+    sif_file = f"frameworks/{framework}/{framework.lower()}_{version.lower()}-stable.sif"
 
     if not os.path.exists(sif_file):
         logger.warning("Trying to generate the singularity image. Please enter 'y' for yes"
@@ -245,6 +263,19 @@ def remote_exists(directory: str) -> bool:
         return True
 
 
+def remote_glob(pattern: str) -> typing.List[str]:
+    logger.debug(f"[remote_glob] {pattern}")
+    stdin, stdout, stderr = SSH.exec_command(f"ls -d {pattern}")
+    stdout.channel.recv_exit_status()
+    stderr.channel.recv_exit_status()
+    errors = stderr.readlines()
+    files = stdout.readlines()
+    if any(['cannot access' in a for a in errors]):
+        return []
+    else:
+        return [f.rstrip() for f in files]
+
+
 def remote_makedirs(directory: str) -> bool:
     """Creates a nested directory
 
@@ -295,7 +326,7 @@ def remote_get(source: str) -> str:
         str: the local full path of the file
     """
     logger.debug(f"[remote_get] {source}")
-    destination = os.path.join('/tmp', os.path.basename(source))
+    destination = os.path.join('/tmp', str(uuid.uuid1(clock_seq=os.getpid())) + os.path.basename(source))
 
     # First make the file available in addlogin
     scp = SCPClient(SSH.get_transport())
@@ -402,8 +433,11 @@ def create_run_dir_area(run_dir: typing.Optional[str], args: typing.Any,
     # So we copy over the resources to this directory
     remote_put('resources/frameworks.yaml', f"{run_dir}/frameworks.yaml")
 
+    # Copy also the benchmarks
+    remote_put('resources/benchmarks', f"{run_dir}/benchmarks")
+
     # Copy the SIF file
-    sif_file = f"frameworks/{args.framework}/{args.framework.lower()}_{version}-stable.sif"
+    sif_file = f"frameworks/{args.framework}/{args.framework.lower()}_{version.lower()}-stable.sif"
     src = f"{AUTOMLBENCHMARK}/frameworks/{args.framework}/{os.path.basename(sif_file)}"
     dst = f"{run_dir}/{os.path.basename(sif_file)}"
     remote_run(f"cp {src} {dst}")
@@ -698,7 +732,15 @@ def get_results(
 
     result_file = remote_get(result_file)
 
-    df = pd.read_csv(result_file)
+    if os.path.getsize(result_file) < 5:
+        logger.error(f"result_file={result_file} is empty")
+        return None
+
+    try:
+        df = pd.read_csv(result_file)
+    except Exception as e:
+        print(f"result_file={result_file}")
+        raise e
     df["fold"] = pd.to_numeric(df["fold"])
     df = df[(df['framework'] == framework) & (df['task'] == task) & (df['fold'] == fold)]
 
@@ -867,7 +909,7 @@ allbosch_cpu-cascadelake    up    2:05:00     41  alloc kisexe[01-02,04-05,07,09
 
 def to_array_run(run_file, memory, cores, run_dir):
 
-    name = f"{run_dir}/scripts/arrayjob_{len(run_file)}_{os.getpid()}_{randrange(100)}.sh"
+    filename = f"arrayjob_{len(run_file)}_{os.getpid()}_{randrange(100)}.sh"
 
     command = f"""#!/bin/bash
 #SBATCH -o {run_dir}/logs/%x.%A.%a.out
@@ -895,9 +937,11 @@ echo "Job started at: `date`"
         command += "\n\tfi\n"
     command += "\necho DONE at: `date`"
 
-    with open(name, 'w') as f:
+    with open(filename, 'w') as f:
         f.write(command)
-    return name
+    remote_name = f"{run_dir}/scripts/{filename}"
+    remote_put(filename, remote_name)
+    return remote_name
 
 
 def are_resource_available_to_run(partition: str, min_cpu_free=128, max_total_runs=50):
@@ -908,6 +952,7 @@ def are_resource_available_to_run(partition: str, min_cpu_free=128, max_total_ru
         partition (str): which partition to launch and check
         min_cpu_free: only launch if cpu free
     """
+    return True
     #result = subprocess.run(
     #    f"sfree",
     #    shell=True,
@@ -958,7 +1003,7 @@ def launch_run(
         extra += ' --bosch'
 
     # For array
-    max_hours=8
+    max_hours = 8 if args.runtime <= 14400 else 12
     if 'array' in args.run_mode:
         raise NotImplementedError(f"Have to fix this for remote running ")
         job_list_file = to_array_run(run_files, args.memory, args.cores, run_dir)
@@ -1476,7 +1521,7 @@ if __name__ == "__main__":
         '-m',
         '--memory',
         default='32G',
-        choices=['12G', '32G'],
+        choices=['12G', '32G', '8G'],
         help='the ammount of memory to allocate to a job'
     )
     parser.add_argument(
@@ -1576,7 +1621,7 @@ if __name__ == "__main__":
     # Do this before create run_dir_area so that we ONLY copy over the sif file
     # once over the network
     updated_files = subprocess.run(
-        f"rsync --update -avzhP --exclude '*/venv/*' --exclude '*/lib/*' -e \"ssh -p 22 -A {USER}@132.230.166.39 ssh\" {os.getcwd()}/* {USER}@10.5.166.92:{AUTOMLBENCHMARK}",
+        f"rsync --update -avzhP --exclude '*/venv/*' --exclude '*/lib/*' -e \"ssh -p 22 -A {USER}@132.230.166.39 ssh\" {os.getcwd()}/* {USER}@{INTERNAL}:{AUTOMLBENCHMARK}",
         shell=True,
         stdout=subprocess.PIPE
     ).stdout.decode('utf-8')
