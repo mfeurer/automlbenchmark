@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-VERSION=${1:-"latest"}
+VERSION=${1:-"zahradnik"}
 H2O_REPO=${2:-"https://h2o-release.s3.amazonaws.com/h2o"}
 echo "setting up H2O version $VERSION"
 
@@ -10,6 +10,7 @@ if [[ -x "$(command -v apt-get)" ]]; then
     SUDO apt-get install -y openjdk-8-jdk
 fi
 PIP install --no-cache-dir -r ${HERE}/requirements.txt
+
 
 if  [[ "$VERSION" = "latest" ]]; then
     h2o_package="h2o"
@@ -41,4 +42,11 @@ if [[ -n "$h2o_package" ]]; then
 else
     echo "not installing any H2O release version"
 fi
+
+PIP install --upgrade 'requests'
+PIP install --upgrade 'colorama==0.3.8'
+PIP install --upgrade 'tabulate'
+PIP install --upgrade 'future'
+PIP uninstall --yes h2o
+PIP install -f http://h2o-release.s3.amazonaws.com/h2o/latest_stable_Py.html h2o
 

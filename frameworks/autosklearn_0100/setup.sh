@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 HERE=$(dirname "$0")
 AMLB_DIR="$1"
-VERSION="development"
+VERSION="0.10.0"
 REPO=${3:-"https://github.com/automl/auto-sklearn.git"}
 PKG=${4:-"auto-sklearn"}
 if [[ "$VERSION" == "latest" ]]; then

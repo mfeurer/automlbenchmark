@@ -1,3 +1,4 @@
+from shutil import copyfile
 import logging
 import math
 import os
@@ -90,6 +91,8 @@ def run(dataset, config):
                              n_jobs=n_jobs,
                              ml_memory_limit=ml_memory_limit,
                              ensemble_memory_limit=ensemble_memory_limit,
+                             delete_tmp_folder_after_terminate=False,
+                             delete_output_folder_after_terminate=False,
                              seed=config.seed,
                              **constr_extra_params,
                              **training_params)
@@ -123,8 +126,23 @@ def save_artifacts(estimator, config):
             models_file = os.path.join(output_subdir('models', config), 'models.txt')
             with open(models_file, 'w') as f:
                 f.write(models_repr)
-    except Exception:
-        log.debug("Error when saving artifacts.", exc_info=True)
+        if 'debug' in artifacts:
+            print('Saving debug artifacts!')
+            debug_dir = output_subdir('debug', config)
+            ignore_extensions = ['.npy', '.pcs', '.model', '.ensemble', '.pkl']
+            tmp_directory = estimator.automl_._backend.temporary_directory
+            files_to_copy = []
+            for r, d, f in os.walk(tmp_directory):
+                for file_name in f:
+                    base, ext = os.path.splitext(file_name)
+                    if ext not in ignore_extensions:
+                        files_to_copy.append(os.path.join(r, file_name))
+            for filename in files_to_copy:
+                dst = filename.replace(tmp_directory, debug_dir+'/')
+                os.makedirs(os.path.dirname(dst), exist_ok=True)
+                copyfile(filename, dst)
+    except Exception as e:
+        log.debug("Error when saving artifacts= {e}.".format(e), exc_info=True)
 
 
 if __name__ == '__main__':

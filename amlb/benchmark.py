@@ -411,6 +411,8 @@ class BenchmarkTask:
         result = meta_result = None
         try:
             log.info("Running task %s on framework %s with config:\n%s", task_config.name, framework_name, repr_def(task_config))
+            print(f"framework={framework}")
+            print(vars(framework))
             meta_result = framework.run(self._dataset, task_config)
         except Exception as e:
             log.exception(e)

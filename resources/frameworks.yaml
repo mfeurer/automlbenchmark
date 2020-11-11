@@ -58,9 +58,33 @@ AutoGluon_best:
   params:
     presets: best_quality
 
+autoPyTorch:
+  version: 'test.singlerun'
+  project: https://github.com/automl/Auto-PyTorch
+
+autoPyTorch_test:
+  version: 'test'
+  project: https://github.com/automl/Auto-PyTorch
+
+autoPyTorch_multiprocessing:
+  version: 'multiprocessing'
+  project: https://github.com/automl/Auto-PyTorch
+
+autoPyTorch_test2:
+  version: 'test2'
+  project: https://github.com/automl/Auto-PyTorch
+
+autoPyTorch_allowpickleeverywhere:
+  version: 'singlerun'
+  project: https://github.com/automl/Auto-PyTorch
+
 autosklearn_052:
   version: '0.5.2'
   project: https://automl.github.io/auto-sklearn/
+
+autopytorch_testsinglerun:
+  version: 'testsinglerun'
+  project: https://github.com/automl/Auto-PyTorch
 
 autosklearn_060:
   version: '0.6.0'
@@ -81,9 +105,87 @@ autosklearn_090:
 autosklearn_0100:
   version: '0.10.0'
   project: https://automl.github.io/auto-sklearn/
+  params:
+    _save_artifacts: ['debug']
+
+autosklearn_8ad6a98749547e979030807d3b75b5ca33a17976:
+  version: '0.10.0_iterative_fit'
+  project: https://automl.github.io/auto-sklearn/
+  params:
+    _save_artifacts: ['debug']
+
+autosklearn_776695bef5d9825a4a2c14f184b0432b03e9c774:
+  version: '0.10.0_iterative_fit_tinybugs'
+  project: https://automl.github.io/auto-sklearn/
+  params:
+    _save_artifacts: ['debug']
+
+autosklearn_3b727b33aa7816e4738dfb971918a9c10f4aba8a:
+  version: '0.10.0_iterative_fit2'
+  project: https://automl.github.io/auto-sklearn/
+  params:
+    _save_artifacts: ['debug']
+
+autosklearn_f2c6eef33069595fde85b92e3b9095efd1bd4063:
+  version: 'ensemble_dask_callback'
+  project: https://automl.github.io/auto-sklearn/
+  params:
+    _save_artifacts: ['debug']
+
+autosklearn2_0100:
+  version: '0.10.0'
+  project: https://automl.github.io/auto-sklearn/
+  params:
+    _save_artifacts: ['debug']
+
+autosklearndebug_logging:
+  version: 'logging'
+  project: https://automl.github.io/auto-sklearn/
+  params:
+    _save_artifacts: ['debug']
+
+autosklearndebug_logging2:
+  version: 'logging2'
+  project: https://automl.github.io/auto-sklearn/
+  params:
+    _save_artifacts: ['debug']
+
+autosklearn2_fix_905:
+  version: 'fix_905'
+  project: https://automl.github.io/auto-sklearn/
+  params:
+    _save_artifacts: ['debug']
+
+autosklearn2_4893089b0a49c158f3ce7687899290839efc3a4d:
+  version: '0.10.0.dev'
+  project: https://automl.github.io/auto-sklearn/
+  params:
+    _save_artifacts: ['debug']
+
+autosklearn2_development:
+  version: 'fbc3373f8e3720dc61964d2602ebc1ff3b02d31f'
+  project: https://automl.github.io/auto-sklearn/
+  params:
+    _save_artifacts: ['debug']
+
+autosklearn_daskensemble:
+  version: 'ensemble_in_dask'
+  project: https://automl.github.io/auto-sklearn/
+  params:
+    _save_artifacts: ['debug']
+
+autosklearn_daskensemble2:
+  version: 'ensemble_in_dask2'
+  project: https://automl.github.io/auto-sklearn/
+  params:
+    _save_artifacts: ['debug']
 
 autosklearn_0100_mem:
   version: '0.10.0'
+  project: https://automl.github.io/auto-sklearn/
+
+autosklearn_parallelism:
+  version: 'parallelism'
   project: https://automl.github.io/auto-sklearn/
 
 autosklearn_090_newmem:
@@ -167,3 +269,4 @@ mljarsupervised:
     mode: "Compete"   # set mode for Compete, default mode is Explain
 #    algorithms: ["Baseline"]
 #    _save_artifacts: True
+
