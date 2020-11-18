@@ -129,7 +129,7 @@ def create_singularity_image(framework: str) -> None:
 
     author = get_author_from_benchmark()
     valid_frameworks = get_framework_information()
-    version = valid_frameworks[framework]['version'].replace('-', '_')
+    version = valid_frameworks[framework]['version'].replace('-', '_').lower()
 
     run_file = 'generate_sif.sh'
     command = f"""
@@ -174,12 +174,13 @@ def validate_framework(framework: str) -> None:
         raise ValueError(f"We expect that the framework={framework} will be in the "
                          "{framework_file} file. This is required by automlbenchmark")
     version = valid_frameworks[framework]['version'].replace('-', '_')
-    sif_file = f"frameworks/{framework}/{framework.lower()}_{version}-stable.sif"
+    sif_file = f"frameworks/{framework}/{framework.lower()}_{version.lower()}-stable.sif"
 
     if not os.path.exists(sif_file):
         logger.warn("Trying to generate the singularity image. Please enter 'y' for yes"
                     "When the benchmark ask you about if you are sure you want to generate"
                     "the image.")
+        raise NotImplementedError(sif_file)
         create_singularity_image(framework)
 
         # Try to create the file
@@ -396,7 +397,7 @@ def create_run_dir_area(run_dir: typing.Optional[str], args: typing.Any
     remote_put('resources/benchmarks', f"{run_dir}/benchmarks")
 
     # Copy the SIF file
-    sif_file = f"frameworks/{args.framework}/{args.framework.lower()}_{version}-stable.sif"
+    sif_file = f"frameworks/{args.framework}/{args.framework.lower()}_{version.lower()}-stable.sif"
     #copyfile(sif_file, f"{run_dir}/{os.path.basename(sif_file)}")
     remote_put(sif_file, f"{run_dir}/{os.path.basename(sif_file)}")
 
@@ -623,7 +624,11 @@ def get_results(
         logger.error(f"result_file={result_file} is empty")
         return None
 
-    df = pd.read_csv(result_file)
+    try:
+        df = pd.read_csv(result_file)
+    except Exception as e:
+        print(f"result_file={result_file}")
+        raise e
     df["fold"] = pd.to_numeric(df["fold"])
     df = df[(df['framework'] == framework) & (df['task'] == task) & (df['fold'] == fold)]
 
@@ -710,7 +715,7 @@ def check_if_running(run_file: str) -> bool:
     name, ext = os.path.splitext(os.path.basename(run_file))
 
     # First check if there is a job with this name
-    cmd = f"squeue --format=\"%.50j\" --noheader -u {USER}"
+    cmd = f"squeue --format=\"%.150j\" --noheader -u {USER}"
     #result = subprocess.run([
     #    'squeue',
     #    f"--format=\"%.50j\" --noheader -u {os.environ['USER']}"
@@ -1220,6 +1225,214 @@ def collect_overfit(
     return pd.DataFrame(dataframe)
 
 
+def collect_overfit2(
+    jobs: typing.Dict,
+    args: typing.Any,
+    run_dir: str
+) -> pd.DataFrame:
+    """
+    Creates overfit dataset and print the total average. Just for autosklearn
+
+    Args:
+        jobs (typing.Dict): A handy dictionary with frameworks/benchmarck/task/fold info
+        args (typing.Any): Namespace with the input argument of this script
+        run_dir (str): Are on where to launch the jobs
+
+    Returns:
+
+    """
+
+    all_test_scores = []
+    all_overfits = []
+
+    # Collect a dataframe that will contain columns
+    # tool Experiment metric train val test
+    constraint = f"{args.runtime}s{args.cores}c{args.memory}"
+    metric = get_metric_from_run_area(run_dir)
+    dataframe = []
+    for framework, framework_dict in jobs.items():
+        for benchmark, benchmark_dict in framework_dict.items():
+            for task, task_dict in benchmark_dict.items():
+                train, test, val, overfit = {}, {}, {}, {}
+                for fold, data in task_dict.items():
+                    for overfit_file in remote_glob(os.path.join(
+                        run_dir,
+                        f"{framework}_{benchmark}_{constraint}_{task}_{fold}",
+                        '*',  # The directory name the benchmark created
+                        'overfit',
+                        task,
+                        str(fold),
+                        'overfit.csv'
+                    )):
+                        overfit_file = remote_get(overfit_file)
+                        frame = pd.read_csv(overfit_file, index_col=0)
+                        for index, row in frame.iterrows():
+                            row_dict = row.to_dict()
+
+                            # We care about the best individual model and ensemble
+                            if row_dict['model'] not in ['best_individual_model', 'best_ensemble_model']:
+                                continue
+
+                            # Collect data
+                            if row_dict['model'] not in train:
+                                train[row_dict['model']] = []
+                            train[row_dict['model']].append(row_dict['train'])
+                            if row_dict['model'] not in val:
+                                val[row_dict['model']] = []
+                            val[row_dict['model']].append(row_dict['val'])
+                            if row_dict['model'] not in test:
+                                test[row_dict['model']] = []
+                            test[row_dict['model']].append(row_dict['test'])
+                            if row_dict['model'] not in overfit:
+                                overfit[row_dict['model']] = []
+
+                            if row_dict['model'] == 'best_individual_model':
+                                key = 'best_ever_test_score_individual_model'
+                            elif row_dict['model'] == 'best_ensemble_model':
+                                key = 'best_ever_test_score_ensemble_model'
+                            else:
+                                raise NotImplementedError(row_dict['model'])
+                            overfit[row_dict['model']].append(
+                                frame[frame['model'] == key]['test'] - row_dict['test'])
+                for model in train.keys():
+                    row_dict = {
+                        'tool': framework,
+                        'task': task,
+                        'metric': metric,
+                        'model': model,
+                        'train_mean':  np.nanmean(train[model]) if np.any(train[model]) else 0,
+                        'val_mean':  np.nanmean(val[model]) if np.any(val[model]) else 0,
+                        'test_mean':  np.nanmean(test[model]) if np.any(test[model]) else 0,
+                        'overfit_mean':  np.nanmean(overfit[model]) if np.any(overfit[model]) else 0,
+                        'train_std':  np.nanstd(train[model]) if np.any(train[model]) else 0,
+                        'val_std':  np.nanstd(val[model]) if np.any(val[model]) else 0,
+                        'test_std':  np.nanstd(test[model]) if np.any(test[model]) else 0,
+                        'overfit_std':  np.nanstd(overfit[model]) if np.any(overfit[model]) else 0,
+                    }
+                    dataframe.append(row_dict)
+                    if model == 'best_ensemble_model':
+                        all_test_scores.extend(test[model])
+                        all_overfits.extend(overfit[model])
+    print(f"Average Test Score = {np.mean(all_test_scores)} +- {np.std(all_test_scores)}")
+    print(f"Average Overfit = {np.mean(all_overfits)} +- {np.std(all_overfits)}")
+
+    return pd.DataFrame(dataframe)
+
+
+def collect_overfit3(
+    jobs: typing.Dict,
+    args: typing.Any,
+    run_dir: str
+) -> pd.DataFrame:
+    """
+    Creates overfit dataset and print the total average. Just for autosklearn
+
+    Args:
+        jobs (typing.Dict): A handy dictionary with frameworks/benchmarck/task/fold info
+        args (typing.Any): Namespace with the input argument of this script
+        run_dir (str): Are on where to launch the jobs
+
+    Returns:
+
+    """
+
+    # Collect a dataframe that will contain columns
+    # tool Experiment metric train val test
+    constraint = f"{args.runtime}s{args.cores}c{args.memory}"
+    metric = get_metric_from_run_area(run_dir)
+    dataframe = []
+    for framework, framework_dict in jobs.items():
+        for benchmark, benchmark_dict in framework_dict.items():
+            for task, task_dict in benchmark_dict.items():
+                for fold, data in task_dict.items():
+                    for overfit_file in remote_glob(os.path.join(
+                        run_dir,
+                        f"{framework}_{benchmark}_{constraint}_{task}_{fold}",
+                        '*',  # The directory name the benchmark created
+                        'overfit',
+                        task,
+                        str(fold),
+                        'overfit.csv'
+                    )):
+                        overfit_file = remote_get(overfit_file)
+                        frame = pd.read_csv(overfit_file, index_col=0)
+                        for index, row in frame.iterrows():
+                            row_dict = row.to_dict()
+
+                            # We care about the best individual model and ensemble
+                            if row_dict['model'] not in ['best_individual_model', 'best_ensemble_model']:
+                                continue
+                            model = row_dict['model']
+
+                            train = row_dict['train']
+                            val = row_dict['val']
+                            test = row_dict['test']
+                            if row_dict['model'] == 'best_individual_model':
+                                key = 'best_ever_test_score_individual_model'
+                            elif row_dict['model'] == 'best_ensemble_model':
+                                key = 'best_ever_test_score_ensemble_model'
+                            else:
+                                raise NotImplementedError(row_dict['model'])
+                            overfit = float(frame[frame['model'] == key]['test'].iloc[0] - row_dict['test'])
+                            dataframe.append({
+                                'tool': framework,
+                                'task': task,
+                                'model': model,
+                                'fold': fold,
+                                'train':  train,
+                                'val':  val,
+                                'test':  test,
+                                'overfit':  overfit,
+                            })
+    return pd.DataFrame(dataframe)
+
+
+def collect_ensemble_history(
+    jobs: typing.Dict,
+    args: typing.Any,
+    run_dir: str
+) -> pd.DataFrame:
+    """
+    Collects the overfit files, integrating them per fold into a single framework file
+
+    Args:
+        jobs (typing.Dict): A handy dictionary with frameworks/benchmarck/task/fold info
+        args (typing.Any): Namespace with the input argument of this script
+        run_dir (str): Are on where to launch the jobs
+
+    Returns:
+
+    """
+
+    # Collect a dataframe that will contain columns
+    # tool Experiment metric train val test
+    constraint = f"{args.runtime}s{args.cores}c{args.memory}"
+    dataframe = []
+    for framework, framework_dict in jobs.items():
+        for benchmark, benchmark_dict in framework_dict.items():
+            for task, task_dict in benchmark_dict.items():
+                for fold, data in task_dict.items():
+                    for overfit_file in remote_glob(os.path.join(
+                        run_dir,
+                        f"{framework}_{benchmark}_{constraint}_{task}_{fold}",
+                        '*',  # The directory name the benchmark created
+                        'debug',
+                        task,
+                        str(fold),
+                        'ensemble_history.csv'
+                    )):
+                        overfit_file = remote_get(overfit_file)
+                        frame = pd.read_csv(overfit_file, index_col=0)
+                        # Tag with identifiers
+                        frame['fold'] = fold
+                        frame['tool'] = framework
+                        frame['task'] = task
+
+                        # Convert to relative time
+                        dataframe.append(frame)
+    return pd.concat(dataframe).reset_index(drop=True)
+
+
 def get_normalized_score(
     jobs: typing.Dict[str, typing.Dict],
     framework: str,
@@ -1570,6 +1783,14 @@ if __name__ == "__main__":
         help='generates a problems dataframe'
     )
     parser.add_argument(
+        '--collect_ensemble_history',
+        type=str2bool,
+        nargs='?',
+        const=True,
+        default=False,
+        help='generates a problems dataframe'
+    )
+    parser.add_argument(
         '--models',
         type=str2bool,
         nargs='?',
@@ -1658,13 +1879,24 @@ if __name__ == "__main__":
         )
 
     if args.collect_overfit:
-        overfit = collect_overfit(
+        overfit = collect_overfit3(
             jobs=jobs,
             args=args,
             run_dir=run_dir
         )
-        logger.info('Please check overfit.csv')
-        overfit.to_csv('overfit.csv')
+        filename = f"{args.framework}_overfit.csv"
+        logger.info(f"Please check {filename}")
+        overfit.to_csv(filename)
+
+    if args.collect_ensemble_history:
+        overfit = collect_ensemble_history(
+            jobs=jobs,
+            args=args,
+            run_dir=run_dir
+        )
+        filename = f"{args.framework}_ensemble_history.csv"
+        logger.info(f"Please check {filename}")
+        overfit.to_csv(filename)
 
     # Close the connection to the server
     SSH.close()

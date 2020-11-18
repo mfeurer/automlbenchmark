@@ -66,6 +66,182 @@ autosklearn:
   params:
     _save_artifacts: ['models', 'overfit', 'debug']
 
+autosklearnBBCEnsembleSelectionPreSelectInES_B_100_Nb_25:
+  version: 'B_100_Nb_25'
+  project: https://automl.github.io/auto-sklearn/
+  params:
+    _save_artifacts: ['models', 'overfit', 'debug']
+    bbc_cv_sample_size: 0.25
+    bbc_cv_n_bootstrap: 100
+
+autosklearnBBCEnsembleSelectionPreSelectInES_B_100_Nb_100:
+  version: 'B_100_Nb_100'
+  project: https://automl.github.io/auto-sklearn/
+  params:
+    _save_artifacts: ['models', 'overfit', 'debug']
+    bbc_cv_sample_size: 1.0
+    bbc_cv_n_bootstrap: 100
+
+autosklearnBBCEnsembleSelectionPreSelectInES_B_10_Nb_100:
+  version: 'B_10_Nb_100'
+  project: https://automl.github.io/auto-sklearn/
+  params:
+    _save_artifacts: ['models', 'overfit', 'debug']
+    bbc_cv_sample_size: 1.0
+    bbc_cv_n_bootstrap: 10
+
+autosklearnBBCEnsembleSelectionPreSelectInES_B_50_Nb_100:
+  version: 'B_50_Nb_100'
+  project: https://automl.github.io/auto-sklearn/
+  params:
+    _save_artifacts: ['models', 'overfit', 'debug']
+    bbc_cv_sample_size: 1.0
+    bbc_cv_n_bootstrap: 50
+
+autosklearnBBCEnsembleSelectionNoPreSelect_b_100_Nb_25:
+  version: 'B_100_Nb_25'
+  project: https://automl.github.io/auto-sklearn/
+  params:
+    _save_artifacts: ['models', 'overfit', 'debug']
+    bbc_cv_sample_size: 0.25
+    bbc_cv_n_bootstrap: 100
+
+autosklearnBBCEnsembleSelectionNoPreSelect_b_100_Nb_100:
+  version: 'B_100_Nb_100'
+  project: https://automl.github.io/auto-sklearn/
+  params:
+    _save_artifacts: ['models', 'overfit', 'debug']
+    bbc_cv_sample_size: 1.0
+    bbc_cv_n_bootstrap: 100
+
+autosklearnBBCEnsembleSelectionNoPreSelect_b_50_Nb_100:
+  version: 'B_50_Nb_100'
+  project: https://automl.github.io/auto-sklearn/
+  params:
+    _save_artifacts: ['models', 'overfit', 'debug']
+    bbc_cv_sample_size: 1.0
+    bbc_cv_n_bootstrap: 50
+
+autosklearnBBCEnsembleSelectionNoPreSelect_b_10_Nb_100:
+  version: 'B_10_Nb_100'
+  project: https://automl.github.io/auto-sklearn/
+  params:
+    _save_artifacts: ['models', 'overfit', 'debug']
+    bbc_cv_sample_size: 1.0
+    bbc_cv_n_bootstrap: 10
+
+autosklearnBBCEnsembleSelection_B_100_Nb_25:
+  version: 'B_100_Nb_25'
+  project: https://automl.github.io/auto-sklearn/
+  params:
+    _save_artifacts: ['models', 'overfit', 'debug']
+    bbc_cv_sample_size: 0.25
+    bbc_cv_n_bootstrap: 100
+
+autosklearnBBCEnsembleSelection_B_100_Nb_100:
+  version: 'B_100_Nb_100'
+  project: https://automl.github.io/auto-sklearn/
+  params:
+    _save_artifacts: ['models', 'overfit', 'debug']
+    bbc_cv_sample_size: 1.0
+    bbc_cv_n_bootstrap: 100
+
+autosklearnBBCEnsembleSelection_B_10_Nb_100:
+  version: 'B_10_Nb_100'
+  project: https://automl.github.io/auto-sklearn/
+  params:
+    _save_artifacts: ['models', 'overfit', 'debug']
+    bbc_cv_sample_size: 1.0
+    bbc_cv_n_bootstrap: 10
+
+autosklearnBBCEnsembleSelection_B_50_Nb_100:
+  version: 'B_50_Nb_100'
+  project: https://automl.github.io/auto-sklearn/
+  params:
+    _save_artifacts: ['models', 'overfit', 'debug']
+    bbc_cv_sample_size: 1.0
+    bbc_cv_n_bootstrap: 50
+
+autosklearnBBCEnsembleSelection_B_10_Nb_25:
+  version: 'B_10_Nb_25'
+  project: https://automl.github.io/auto-sklearn/
+  params:
+    _save_artifacts: ['models', 'overfit', 'debug']
+    bbc_cv_sample_size: 0.25
+    bbc_cv_n_bootstrap: 10
+
+autosklearnBBCEnsembleSelection_B_50_Nb_25:
+  version: 'B_50_Nb_25'
+  project: https://automl.github.io/auto-sklearn/
+  params:
+    _save_artifacts: ['models', 'overfit', 'debug']
+    bbc_cv_sample_size: 0.25
+    bbc_cv_n_bootstrap: 50
+
+autosklearnBBCEnsembleSelection_B_100_Nb_50:
+  version: 'B_100_Nb_50'
+  project: https://automl.github.io/auto-sklearn/
+  params:
+    _save_artifacts: ['models', 'overfit', 'debug']
+    bbc_cv_sample_size: 0.50
+    bbc_cv_n_bootstrap: 100
+
+autosklearnBBCEnsembleSelection_B_10_Nb_50:
+  version: 'B_10_Nb_50'
+  project: https://automl.github.io/auto-sklearn/
+  params:
+    _save_artifacts: ['models', 'overfit', 'debug']
+    bbc_cv_sample_size: 0.50
+    bbc_cv_n_bootstrap: 10
+
+autosklearnBBCEnsembleSelection_B_50_Nb_50:
+  version: 'B_50_Nb_50'
+  project: https://automl.github.io/auto-sklearn/
+  params:
+    _save_artifacts: ['models', 'overfit', 'debug']
+    bbc_cv_sample_size: 0.50
+    bbc_cv_n_bootstrap: 50
+
+autosklearnBBCEnsembleSelection_B_100_Nb_75:
+  version: 'B_100_Nb_75'
+  project: https://automl.github.io/auto-sklearn/
+  params:
+    _save_artifacts: ['models', 'overfit', 'debug']
+    bbc_cv_sample_size: 0.75
+    bbc_cv_n_bootstrap: 100
+
+autosklearnBBCEnsembleSelection_B_10_Nb_75:
+  version: 'B_10_Nb_75'
+  project: https://automl.github.io/auto-sklearn/
+  params:
+    _save_artifacts: ['models', 'overfit', 'debug']
+    bbc_cv_sample_size: 0.75
+    bbc_cv_n_bootstrap: 10
+
+autosklearnBBCEnsembleSelection_B_50_Nb_75:
+  version: 'B_50_Nb_75'
+  project: https://automl.github.io/auto-sklearn/
+  params:
+    _save_artifacts: ['models', 'overfit', 'debug']
+    bbc_cv_sample_size: 0.75
+    bbc_cv_n_bootstrap: 50
+
+autosklearnBBCScoreEnsemble_B_10_Nb_25:
+  version: 'B_10_Nb_25'
+  project: https://automl.github.io/auto-sklearn/
+  params:
+    _save_artifacts: ['models', 'overfit', 'debug']
+    bbc_cv_sample_size: 0.25
+    bbc_cv_n_bootstrap: 10
+
+autosklearnBBCScoreEnsemble_B_50_Nb_25:
+  version: 'B_50_Nb_25'
+  project: https://automl.github.io/auto-sklearn/
+  params:
+    _save_artifacts: ['models', 'overfit', 'debug']
+    bbc_cv_sample_size: 0.25
+    bbc_cv_n_bootstrap: 50
+
 autosklearnBBCScoreEnsemble_B_100_Nb_25:
   version: 'B_100_Nb_25'
   project: https://automl.github.io/auto-sklearn/
@@ -73,6 +249,215 @@ autosklearnBBCScoreEnsemble_B_100_Nb_25:
     _save_artifacts: ['models', 'overfit', 'debug']
     bbc_cv_sample_size: 0.25
     bbc_cv_n_bootstrap: 100
+
+autosklearnBBCScoreEnsemble_B_10_Nb_50:
+  version: 'B_10_Nb_50'
+  project: https://automl.github.io/auto-sklearn/
+  params:
+    _save_artifacts: ['models', 'overfit', 'debug']
+    bbc_cv_sample_size: 0.50
+    bbc_cv_n_bootstrap: 10
+
+autosklearnBBCScoreEnsemble_B_50_Nb_50:
+  version: 'B_50_Nb_50'
+  project: https://automl.github.io/auto-sklearn/
+  params:
+    _save_artifacts: ['models', 'overfit', 'debug']
+    bbc_cv_sample_size: 0.50
+    bbc_cv_n_bootstrap: 50
+
+autosklearnBBCScoreEnsemble_B_100_Nb_50:
+  version: 'B_100_Nb_50'
+  project: https://automl.github.io/auto-sklearn/
+  params:
+    _save_artifacts: ['models', 'overfit', 'debug']
+    bbc_cv_sample_size: 0.50
+    bbc_cv_n_bootstrap: 100
+
+autosklearnBBCScoreEnsemble_B_10_Nb_75:
+  version: 'B_10_Nb_75'
+  project: https://automl.github.io/auto-sklearn/
+  params:
+    _save_artifacts: ['models', 'overfit', 'debug']
+    bbc_cv_sample_size: 0.75
+    bbc_cv_n_bootstrap: 10
+
+autosklearnBBCScoreEnsemble_B_50_Nb_75:
+  version: 'B_50_Nb_75'
+  project: https://automl.github.io/auto-sklearn/
+  params:
+    _save_artifacts: ['models', 'overfit', 'debug']
+    bbc_cv_sample_size: 0.75
+    bbc_cv_n_bootstrap: 50
+
+autosklearnBBCScoreEnsemble_B_100_Nb_75:
+  version: 'B_100_Nb_75'
+  project: https://automl.github.io/auto-sklearn/
+  params:
+    _save_artifacts: ['models', 'overfit', 'debug']
+    bbc_cv_sample_size: 0.75
+    bbc_cv_n_bootstrap: 100
+
+autosklearnBBCSMBOAndEnsembleSelectionBISMAC_B100_Nb_25:
+  version: 'B_100_Nb_25'
+  project: https://automl.github.io/auto-sklearn/
+  params:
+    _save_artifacts: ['models', 'overfit', 'debug']
+    bbc_cv_sample_size: 0.25
+    bbc_cv_n_bootstrap: 100
+
+autosklearnBBCSMBOAndEnsembleSelectionBISMAC_B100_Nb_100:
+  version: 'B_100_Nb_100'
+  project: https://automl.github.io/auto-sklearn/
+  params:
+    _save_artifacts: ['models', 'overfit', 'debug']
+    bbc_cv_sample_size: 1.0
+    bbc_cv_n_bootstrap: 100
+
+autosklearnBBCSMBOAndEnsembleSelectionBISMAC_B10_Nb_100:
+  version: 'B_10_Nb_100'
+  project: https://automl.github.io/auto-sklearn/
+  params:
+    _save_artifacts: ['models', 'overfit', 'debug']
+    bbc_cv_sample_size: 1.0
+    bbc_cv_n_bootstrap: 10
+
+autosklearnBBCSMBOAndEnsembleSelectionBISMAC_B50_Nb_100:
+  version: 'B_50_Nb_100'
+  project: https://automl.github.io/auto-sklearn/
+  params:
+    _save_artifacts: ['models', 'overfit', 'debug']
+    bbc_cv_sample_size: 1.0
+    bbc_cv_n_bootstrap: 50
+
+autosklearnBBCSMBOAndEnsembleSelection_B_100_Nb_25:
+  version: 'B_100_Nb_25'
+  project: https://automl.github.io/auto-sklearn/
+  params:
+    _save_artifacts: ['models', 'overfit', 'debug']
+    bbc_cv_sample_size: 0.25
+    bbc_cv_n_bootstrap: 100
+
+autosklearnBBCSMBOAndEnsembleSelection_B_100_Nb_50:
+  version: 'B_100_Nb_50'
+  project: https://automl.github.io/auto-sklearn/
+  params:
+    _save_artifacts: ['models', 'overfit', 'debug']
+    bbc_cv_sample_size: 0.50
+    bbc_cv_n_bootstrap: 100
+
+autosklearnBBCSMBOAndEnsembleSelection_B_100_Nb_75:
+  version: 'B_100_Nb_75'
+  project: https://automl.github.io/auto-sklearn/
+  params:
+    _save_artifacts: ['models', 'overfit', 'debug']
+    bbc_cv_sample_size: 0.75
+    bbc_cv_n_bootstrap: 100
+
+autosklearnBBCSMBOAndEnsembleSelection_B_10_Nb_25:
+  version: 'B_10_Nb_25'
+  project: https://automl.github.io/auto-sklearn/
+  params:
+    _save_artifacts: ['models', 'overfit', 'debug']
+    bbc_cv_sample_size: 0.25
+    bbc_cv_n_bootstrap: 10
+
+autosklearnBBCSMBOAndEnsembleSelection_B_10_Nb_50:
+  version: 'B_10_Nb_50'
+  project: https://automl.github.io/auto-sklearn/
+  params:
+    _save_artifacts: ['models', 'overfit', 'debug']
+    bbc_cv_sample_size: 0.50
+    bbc_cv_n_bootstrap: 10
+
+autosklearnBBCSMBOAndEnsembleSelection_B_10_Nb_75:
+  version: 'B_10_Nb_75'
+  project: https://automl.github.io/auto-sklearn/
+  params:
+    _save_artifacts: ['models', 'overfit', 'debug']
+    bbc_cv_sample_size: 0.75
+    bbc_cv_n_bootstrap: 10
+
+autosklearnBBCSMBOAndEnsembleSelection_B_50_Nb_25:
+  version: 'B_50_Nb_25'
+  project: https://automl.github.io/auto-sklearn/
+  params:
+    _save_artifacts: ['models', 'overfit', 'debug']
+    bbc_cv_sample_size: 0.25
+    bbc_cv_n_bootstrap: 50
+
+autosklearnBBCSMBOAndEnsembleSelection_B_50_Nb_50:
+  version: 'B_50_Nb_50'
+  project: https://automl.github.io/auto-sklearn/
+  params:
+    _save_artifacts: ['models', 'overfit', 'debug']
+    bbc_cv_sample_size: 0.50
+    bbc_cv_n_bootstrap: 50
+
+autosklearnBBCSMBOAndEnsembleSelection_B_50_Nb_75:
+  version: 'B_50_Nb_75'
+  project: https://automl.github.io/auto-sklearn/
+  params:
+    _save_artifacts: ['models', 'overfit', 'debug']
+    bbc_cv_sample_size: 0.75
+    bbc_cv_n_bootstrap: 50
+
+autosklearnBBCSMBOAndEnsembleSelection_B_10_Nb_100:
+  version: 'B_10_Nb_100'
+  project: https://automl.github.io/auto-sklearn/
+  params:
+    _save_artifacts: ['models', 'overfit', 'debug']
+    bbc_cv_sample_size: 1.0
+    bbc_cv_n_bootstrap: 10
+
+autosklearnBBCSMBOAndEnsembleSelection_B_50_Nb_100:
+  version: 'B_50_Nb_100'
+  project: https://automl.github.io/auto-sklearn/
+  params:
+    _save_artifacts: ['models', 'overfit', 'debug']
+    bbc_cv_sample_size: 1.0
+    bbc_cv_n_bootstrap: 50
+
+autosklearnBagging:
+  version: 'bagging'
+  project: https://automl.github.io/auto-sklearn/
+  params:
+    _save_artifacts: ['models', 'overfit', 'debug']
+
+autosklearnBBCSMBOAndEnsembleSelection_B_100_Nb_100:
+  version: 'B_100_Nb_100'
+  project: https://automl.github.io/auto-sklearn/
+  params:
+    _save_artifacts: ['models', 'overfit', 'debug']
+    bbc_cv_sample_size: 1.0
+    bbc_cv_n_bootstrap: 100
+
+autosklearnStacking:
+  version: 'stacking'
+  project: https://automl.github.io/auto-sklearn/
+  params:
+    _save_artifacts: ['models', 'overfit', 'debug']
+
+autosklearnStacking_f03:
+  version: 'f03'
+  project: https://automl.github.io/auto-sklearn/
+  params:
+    _save_artifacts: ['models', 'overfit', 'debug']
+    fraction_time_for_this_smbo: 0.3
+
+autosklearnStacking_f07:
+  version: 'f07'
+  project: https://automl.github.io/auto-sklearn/
+  params:
+    _save_artifacts: ['models', 'overfit', 'debug']
+    fraction_time_for_this_smbo: 0.7
+
+autosklearnStacking_f09:
+  version: 'f09'
+  project: https://automl.github.io/auto-sklearn/
+  params:
+    fraction_time_for_this_smbo: 0.9
+    _save_artifacts: ['models', 'overfit', 'debug']
 
 autosklearn2:
   version: '0.10.0'
