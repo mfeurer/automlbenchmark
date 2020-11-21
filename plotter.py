@@ -5,12 +5,13 @@ import os
 
 import pandas as pd
 
-import numpy as np
+import networkx as nx
 
-import seaborn as sns
+import numpy as np
 
 import matplotlib.pyplot as plt
 
+import seaborn as sns
 
 # ====================================================================
 #                               Functions
@@ -53,14 +54,17 @@ def parse_data(csv_location: str) -> pd.DataFrame:
     # There is a function called isin pandas, but it gives
     # wrong results -- do this fill in manually
     # base df has all the task/fold/models in case one is missing, like for a crash
-    base_df = data[data['tool'] == tool_with_more_rows][required_columns].reset_index(drop=True)
+    #base_df = data[data['tool'] == tool_with_more_rows][required_columns].reset_index(drop=True)
+    base_df = data.loc[data['tool'] == tool_with_more_rows, required_columns].reset_index(drop=True)
     for tool in list(set(all_tools) - {tool_with_more_rows}):
-        fix_df = data[data['tool'] == tool][required_columns].reset_index(drop=True)
+        fix_df = data.loc[data['tool'] == tool, required_columns].reset_index(drop=True)
 
         # IsIn from pandas does it base on the index. We need to unstack/stack values
         # for real comparisson
-        missing_rows = base_df.iloc[base_df[~base_df.stack(
-        ).isin(fix_df.stack().values).unstack()].dropna(how='all').index]
+        #missing_rows = base_df.iloc[base_df[~base_df.stack(
+        #).isin(fix_df.stack().values).unstack()].dropna(how='all').index]
+        mask = base_df.stack().isin(fix_df.stack().values).unstack()
+        missing_rows = base_df.iloc[base_df[~mask].dropna(how='all').index].copy()
         missing_rows['tool'] = tool
         data = pd.concat([data, missing_rows], sort=True).reindex()
 
@@ -124,6 +128,7 @@ def plot_ranks(df: pd.DataFrame,
     # Step 1: Calculate the mean and std of each fold,
     # That is, collapse the folds
     df = df.groupby(['tool', 'model', 'task']).mean().add_suffix('_mean').reset_index()
+    df.to_csv('debug.csv')
 
     # Sadly the rank method of group by gives weird result, so rank manually
     df['rank'] = 0
@@ -145,12 +150,164 @@ def plot_ranks(df: pd.DataFrame,
     ).set_title(f"Ranking Plot")
 
     plt.legend(ncol=4, loc='upper center')
+    plt.xlim(-1, 1)
 
     if output_dir is not None:
         plt.savefig(os.path.join(output_dir, 'ranking_plot.pdf'))
 
     plt.show()
 
+
+def generate_pairwise_comparisson_matrix(df: pd.DataFrame,
+                                         metric: str = 'test',
+                                         tools: typing.List = [],
+                                         ) -> pd.DataFrame:
+    """
+    Generates pairwise matrices as detailed in
+    https://en.wikipedia.org/wiki/Condorcet_method
+
+    "For each possible pair of candidates, one pairwise count indicates how many voters
+    prefer one of the paired candidates over the other candidate, and another pairwise count
+    indicates how many voters have the opposite preference.
+    The counts for all possible pairs of candidates summarize
+    all the pairwise preferences of all the voters."
+
+    """
+    # Step 1: Calculate the mean and std of each fold,
+    # That is, collapse the folds
+    df = df.groupby(['tool', 'model', 'task']).mean().add_suffix('_mean').reset_index()
+
+    # Just care about the provided tools
+    if len(tools) < 1:
+        tools = sorted(df['tools'].unique())
+    df = df[df['tool'].isin(tools)]
+
+    pairwise_comparisson_matrix = pd.DataFrame(data=np.zeros((len(tools), len(tools))),
+                                               columns=tools, index=tools)
+
+    for task in df['task'].unique():
+        # we use datasets as our voters
+        # Then we add each ballot
+        df_task = df[df['task'] == task]
+
+        # So we create a ballot for this dataset
+        this_pairwise_comparisson_matrix = pd.DataFrame(
+            data=np.zeros((len(tools), len(tools))),
+            columns=tools, index=tools
+        )
+
+        for candidate in tools:
+            # Every row in the matrix dictates over who the current tool
+            # wins in performance. Equal performance (likely diagonal)
+            # should get zero
+            candidate_performance = df_task.loc[df_task['tool'] == candidate,
+                                                metric + '_mean'].to_numpy().item(0)
+
+            for opponent in tools:
+
+                # Do not update same performance
+                if opponent == candidate:
+                    continue
+
+                opponent_performance = df_task.loc[df_task['tool'] == opponent,
+                                                   metric + '_mean'].to_numpy().item(0)
+
+                # We update the this_pairwise_comparissin_matrix cells of the current tool
+                # that have a better performance than the current tool
+                if not np.isnan(candidate_performance) and np.isnan(opponent_performance):
+                    # If we have a NaN as opponent, we always win
+                    this_pairwise_comparisson_matrix.loc[candidate, opponent] = 1
+                elif metric == 'test' and candidate_performance > opponent_performance:
+                    this_pairwise_comparisson_matrix.loc[candidate, opponent] = 1
+                elif metric == 'overfit' and candidate_performance < opponent_performance:
+                    this_pairwise_comparisson_matrix.loc[candidate, opponent] = 1
+                elif metric not in ['test', 'overfit']:
+                    raise NotImplementedError(metric)
+
+        pairwise_comparisson_matrix = pairwise_comparisson_matrix.add(
+            this_pairwise_comparisson_matrix,
+            fill_value=0
+        )
+    return pairwise_comparisson_matrix
+
+
+def get_sorted_locked_winner_losser_tuples(pairwise_comparisson_matrix: pd.DataFrame
+                                           ) -> typing.List[typing.Tuple[str, str]]:
+    """
+    Implements the sort and lock step of
+    https://en.wikipedia.org/wiki/Ranked_pairs
+
+    Sort:
+    The pairs of winners, called the "majorities", are then sorted from the largest majority to the smallest majority. A majority for x over y precedes a majority for z over w if and only if one of the following conditions holds:
+
+Vxy > Vzw. In other words, the majority having more support for its alternative is ranked first.
+Vxy = Vzw and Vwz > Vyx. Where the majorities are equal, the majority with the smaller minority opposition is ranked first.[vs 1]
+
+    Lock
+    The next step is to examine each pair in turn to determine the pairs to "lock in".
+
+    Lock in the first sorted pair with the greatest majority.
+    Evaluate the next pair on whether a Condorcet cycle occurs when this pair is added to the locked pairs.
+    If a cycle is detected, the evaluated pair is skipped.
+    If a cycle is not detected, the evaluated pair is locked in with the other locked pairs.
+    Loop back to Step #2 until all pairs have been exhausted.
+    """
+
+    pairs = []
+    for candidate, row in pairwise_comparisson_matrix.iterrows():
+        for opponent in pairwise_comparisson_matrix.columns:
+            if opponent == candidate:
+                next
+            pair = (candidate, opponent)
+            # we count positive votes first
+            number_of_votes = row[opponent]
+            number_of_oposition = pairwise_comparisson_matrix.loc[opponent, candidate]
+
+            # We ask for number_of_vote > 0 so that we do not double count pairs
+            # that is, it is the same candidate, opponent than opponent, candidate
+            winner = pairwise_comparisson_matrix.loc[
+                candidate, opponent] > pairwise_comparisson_matrix.loc[
+                    opponent, candidate]
+            if number_of_votes > 0 and winner:
+                pairs.append((pair, number_of_votes, number_of_oposition))
+
+    # Sort the list
+    sorted_pairs = sorted(pairs, key=lambda x: x[1])
+    print(f"sorted=>{sorted_pairs}")
+    return [pair for pair, v, o, in sorted_pairs]
+
+
+def plot_ranked_pairs_winner(df: pd.DataFrame,
+                             metric: str = 'test',
+                             tools: typing.List = [],
+                             output_dir: typing.Optional[str] = None) -> None:
+    """
+    Implements the voting mechanism from
+    https://en.wikipedia.org/wiki/Ranked_pairs.
+    """
+
+    # Tally: To tally the votes, consider each voter's preferences.
+    # For example, if a voter states "A > B > C" (A is better than B, and B is better than C),
+    # the tally should add one for A in A vs. B, one for A in A vs. C, and one for B
+    # in B vs. C. Voters may also express indifference (e.g., A = B), and unstated candidates
+    # are assumed to be equal to the stated candidates.
+    pairwise_comparisson_matrix = generate_pairwise_comparisson_matrix(
+        df, metric, tools
+    )
+    print(f"pairwise_comparisson_matrix={pairwise_comparisson_matrix}")
+
+    # Sort and lock
+    # a sorted list of locked winners (winner, losser)
+    pair_of_wrinners = get_sorted_locked_winner_losser_tuples(pairwise_comparisson_matrix)
+
+    G = nx.DiGraph()
+    G.add_edges_from(pair_of_wrinners)
+    pos = nx.spring_layout(G)
+    nx.draw_networkx_nodes(G, pos, cmap=plt.get_cmap('jet'),
+                           node_size = 500, node_color='none')
+    nx.draw_networkx_labels(G, pos)
+    nx.draw_networkx_edges(G, pos, edgelist=pair_of_wrinners, edge_color='b', arrows=True, arrowsize=20)
+    plt.show()
 
 
 def plot_testsubtrain_history(csv_location: str, tools: typing.List[str],
@@ -195,11 +352,12 @@ def plot_testsubtrain_history(csv_location: str, tools: typing.List[str],
             all_folds = desired_df[mask]['fold'].unique().tolist()
             count_folds = [desired_df[mask][desired_df[mask]['fold'] == a].shape[
                 0] for a in all_folds]
-            biggest_fold = np.argmax(count_folds)
+            argmax = np.argmax(count_folds)
+            biggest_fold = all_folds[np.argmax(count_folds)]
 
             # Make timestamp a range
             time_mask = (desired_df['task'] == task) & (desired_df['fold'] == biggest_fold)
-            desired_df.loc[time_mask, 'Timestamp'] = pd.Series(range(count_folds[biggest_fold]), index = desired_df.loc[time_mask, 'Timestamp'].index)
+            desired_df.loc[time_mask, 'Timestamp'] = pd.Series(range(count_folds[argmax]), index = desired_df.loc[time_mask, 'Timestamp'].index)
 
             # So the strategy here is to copy over the biggest fold,
             # and re-place values of other folds into it. So the expectation
@@ -304,12 +462,21 @@ if __name__ == "__main__":
     # First get the data
     df = parse_data(args.csv_location)
 
-    # Relative performance difference
-    #plot_relative_performance(df.copy(), tools = ['autosklearnStacking', 'autosklearnBBCEnsembleSelection_B_50_Nb_25'], metric='test', output_dir=None)
+    tools = df['tool'].unique()
+    #for category in ['Stacking', 'BBCSMBOAnd', 'BBCEnsembleSelection', 'ScoreEnsemb']:
+    #    this_tools = [t for t in tools if category in t]
+    #    # Relative performance difference
+    #    plot_relative_performance(df.copy(),
+    #                              tools = this_tools,
+    #                              metric='test', output_dir=None)
+    #    # Plot the training/test history
+    #    plot_testsubtrain_history(args.csv_location,
+    #                              tools = ['autosklearn'] + this_tools, output_dir=None)
     #plot_relative_performance(df.copy(), tools = ['autosklearnStacking', 'autosklearnBBCEnsembleSelection_B_50_Nb_25'], metric='overfit', output_dir=None)
 
     # Plot Ranking Loss
-    plot_ranks(df.copy(), metric='test', output_dir=None)
+    #plot_ranks(df.copy(), metric='overfit', output_dir=None)
 
-    # Plot the training/test history
-    #plot_testsubtrain_history(args.csv_location, tools = ['autosklearn', 'autosklearnStacking'], output_dir=None)
+    # Make pairwise matrix
+    plot_ranked_pairs_winner(metric='test', df=df, tools=['autosklearn', 'autosklearnStacking', 'autosklearnStacking_f03'])
+
