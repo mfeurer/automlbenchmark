@@ -17,10 +17,10 @@ import yaml
 import paramiko
 from scp import SCPClient
 
-
 from shutil import copyfile
 
 import numpy as np  # type: ignore
+import openml
 import pandas as pd  # type: ignore
 pd.set_option('display.width', 1000)
 pd.options.display.max_colwidth = 200
@@ -46,7 +46,8 @@ logger.addHandler(ch)
 ENVIRONMENT_PATH = '/home/riverav/work/venv/bin/activate'
 
 # The base path where we expect all runs to reside
-BASE_PATH = '/home/eggenspk/AUTOML_BENCHMARK/'
+#BASE_PATH = '/home/eggenspk/AUTOML_BENCHMARK/'
+BASE_PATH = '/home/riverav/AUTOML_BENCHMARK_TEST/'
 
 # The remote location of the benchmark
 AUTOMLBENCHMARK = '/home/eggenspk/AUTOML_BENCHMARK/automlbenchmark_fork_BK'
@@ -444,6 +445,15 @@ def create_run_dir_area(run_dir: typing.Optional[str], args: typing.Any,
     return run_dir
 
 
+def slugify(value):
+    """
+    Normalizes string, converts to lowercase, removes non-alpha characters,
+    and converts spaces to hyphens.
+    """
+    value = str(re.sub('[^\w\s-]', '_', value))
+    return value
+
+
 def generate_run_file(
     framework: str,
     benchmark: str,
@@ -466,7 +476,12 @@ def generate_run_file(
         str: the path to the bash file to run
     """
 
-    run_file = f"{run_dir}/scripts/{framework}_{benchmark}_{constraint}_{task}_{fold}.sh"
+    run_file = f"{run_dir}/scripts/{framework}_{slugify(benchmark)}_{constraint}_{slugify(task)}_{fold}.sh"
+
+    if 'openml' in task:
+        cmd = f"python runbenchmark.py {framework} {task} {constraint} --fold {fold} -m singularity --session {framework}_{slugify(benchmark)}_{constraint}_{slugify(task)}_{fold} -o {run_dir}/{framework}_{slugify(benchmark)}_{constraint}_{slugify(task)}_{fold} -u {run_dir}"
+    else:
+        cmd = f"python runbenchmark.py {framework} {benchmark} {constraint} --task {task} --fold {fold} -m singularity --session {framework}_{benchmark}_{constraint}_{task}_{fold} -o {run_dir}/{framework}_{benchmark}_{constraint}_{task}_{fold} -u {run_dir}"
 
     command = f"""#!/bin/bash
 #Setup the run
@@ -474,7 +489,7 @@ echo "Running on HOSTNAME=$HOSTNAME with name $SLURM_JOB_NAME"
 export PATH=/usr/local/kislurm/singularity-3.5/bin/:$PATH
 source {ENVIRONMENT_PATH}
 cd {AUTOMLBENCHMARK}
-if [ -z "$SLURM_ARRAY_TASK_ID" ]; then export TMPDIR=/tmp/{framework}_{benchmark}_{constraint}_{task}_{fold}_$SLURM_JOB_ID; else export TMPDIR=/tmp/{framework}_{benchmark}_{constraint}_{task}_{fold}$SLURM_ARRAY_JOB_ID'_'$SLURM_ARRAY_TASK_ID; fi
+if [ -z "$SLURM_ARRAY_TASK_ID" ]; then export TMPDIR=/tmp/{framework}_{slugify(benchmark)}_{constraint}_{task}_{fold}_$SLURM_JOB_ID; else export TMPDIR=/tmp/{framework}_{slugify(benchmark)}_{constraint}_{task}_{fold}$SLURM_ARRAY_JOB_ID'_'$SLURM_ARRAY_TASK_ID; fi
 echo TMPDIR=$TMPDIR
 export XDG_CACHE_HOME=$TMPDIR
 echo XDG_CACHE_HOME=$XDG_CACHE_HOME
@@ -490,8 +505,8 @@ export fold={fold}
 
 # Sleep a random number of seconds after init to be safe of run
 sleep {np.random.randint(low=0,high=10)}
-echo 'python runbenchmark.py {framework} {benchmark} {constraint} --task {task} --fold {fold} -m singularity --session {framework}_{benchmark}_{constraint}_{task}_{fold} -o {run_dir}/{framework}_{benchmark}_{constraint}_{task}_{fold} -u {run_dir}'
-python runbenchmark.py {framework} {benchmark} {constraint} --task {task} --fold {fold} -m singularity --session {framework}_{benchmark}_{constraint}_{task}_{fold} -o {run_dir}/{framework}_{benchmark}_{constraint}_{task}_{fold} -u {run_dir}
+echo {cmd}
+{cmd}
 echo "Deleting temporal folder $TMPDIR"
 rm -rf $TMPDIR
 echo 'Finished the run'
@@ -501,6 +516,62 @@ echo 'Finished the run'
         f.write(command)
     remote_put(os.path.join('/tmp', os.path.basename(run_file)), run_file)
     return run_file
+
+
+def is_openml_suite(benchmark: str) -> bool:
+    """
+    Utility to check that the provided argument is a benchmark suite
+
+    Args:
+        benchmark (str): a string that could be a benchmark suite
+
+    Returns
+        (bool): whether or not the provided string is a benchmark suite
+    """
+    openml_type_id = benchmark.split('/')
+    if len(openml_type_id) == 3 and openml_type_id[0] == 'openml' and openml_type_id[1] == 's':
+        try:
+            openml.study.get_suite(openml_type_id[2])
+        except Exception:
+            logger.error(f"Could not interpret {benchmark} as suite. It will be ignored...")
+            return False
+        return True
+    return False
+
+
+def is_openml_task(task: str) -> bool:
+    """
+    Utility to check that the provided argument is an openml task
+
+    Args:
+        task (str): a string that could be a task
+
+    Returns
+        (bool): whether or not the provided string is a task
+    """
+    openml_type_id = task.split('/')
+    if len(openml_type_id) == 3 and openml_type_id[0] == 'openml' and openml_type_id[1] == 't':
+        try:
+            openml.tasks.get_task(openml_type_id[2], download_data=False)
+        except Exception:
+            logger.error(f"Could not interpret {task} as task. It will be ignored...")
+            return False
+        return True
+    return False
+
+
+def convert_openml_suite_to_openml_task(benchmark: str) -> typing.Dict[str, str]:
+    """
+    Convert an openml suite to tasks
+
+    Args:
+        benchmark (str): a string that could be a benchmark suite
+
+    Returns:
+        Dict[str, str]: A mapping from suite to tasks
+    """
+    suite = openml.study.get_suite(218)
+    return {benchmark: [f"openml/t/{task}" for task in suite.tasks]}
 
 
 def get_task_from_benchmark(benchmarks: typing.List[str]) -> typing.Dict[str, typing.List[str]]:
@@ -515,17 +586,25 @@ def get_task_from_benchmark(benchmarks: typing.List[str]) -> typing.Dict[str, ty
     task_from_benchmark = {}  # type: typing.Dict[str, typing.List]
 
     for benchmark in benchmarks:
-        task_from_benchmark[benchmark] = []
-        filename = os.path.join('resources', 'benchmarks', f"{benchmark}.yaml")
-        if not os.path.exists(filename):
-            raise Exception(f"File {filename} not found!")
-        with open(filename) as file:
-            data = yaml.load(file, Loader=yaml.FullLoader)
 
-        for task in data:
-            if task['name'] in ['__dummy-task', '__defaults__']:
-                continue
-            task_from_benchmark[benchmark].append(task['name'])
+        # In the case of openmlsuite
+        if is_openml_suite(benchmark):
+            task_from_benchmark.update(convert_openml_suite_to_openml_task(benchmark))
+        elif is_openml_task(benchmark):
+            # openml/t/59 is actually used as a benchmark and task at the same time
+            task_from_benchmark[benchmark] = [benchmark]
+        else:
+            task_from_benchmark[benchmark] = []
+            filename = os.path.join('resources', 'benchmarks', f"{benchmark}.yaml")
+            if not os.path.exists(filename):
+                raise Exception(f"File {filename} not found!")
+            with open(filename) as file:
+                data = yaml.load(file, Loader=yaml.FullLoader)
+
+            for task in data:
+                if task['name'] in ['__dummy-task', '__defaults__']:
+                    continue
+                task_from_benchmark[benchmark].append(task['name'])
 
     return task_from_benchmark
 
@@ -612,7 +691,7 @@ def get_results(
     Returns:
         float: the un-normalized score
     """
-    result_file = f"{run_dir}/{framework}_{benchmark}_{constraint}_{task}_{fold}/results.csv"
+    result_file = f"{run_dir}/{framework}_{slugify(benchmark)}_{constraint}_{slugify(task)}_{fold}/results.csv"
 
     if not remote_exists(result_file):
         return None
@@ -1373,7 +1452,6 @@ if __name__ == "__main__":
         action='append',
         help='What benchmark to run',
         required=True,
-        choices=['test', 'small', 'medium', 'large'],
     )
     parser.add_argument(
         '-t',
@@ -1543,7 +1621,6 @@ if __name__ == "__main__":
         constraint=constraint,
         run_dir=run_dir
     )
-
 
     # Can only run on array or normal mode
     if args.run_mode:
