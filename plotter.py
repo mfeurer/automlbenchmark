@@ -295,6 +295,7 @@ def plot_ranked_pairs_winner(df: pd.DataFrame,
         df, metric, tools
     )
     print(f"pairwise_comparisson_matrix={pairwise_comparisson_matrix}")
+    pairwise_comparisson_matrix.to_csv('pairwise_comparisson_matrix.csv')
 
     # Sort and lock
     # a sorted list of locked winners (winner, losser)
@@ -302,7 +303,11 @@ def plot_ranked_pairs_winner(df: pd.DataFrame,
 
     G = nx.DiGraph()
     G.add_edges_from(pair_of_wrinners)
-    pos = nx.spring_layout(G)
+    #pos = nx.spring_layout(G)
+    pos = nx.spring_layout(G,k=0.95,iterations=50)
+    # k controls the distance between the nodes and varies between 0 and 1
+    # iterations is the number of times simulated annealing is run
+    # default k =0.1 and iterations=50
     nx.draw_networkx_nodes(G, pos, cmap=plt.get_cmap('jet'),
                            node_size = 500, node_color='none')
     nx.draw_networkx_labels(G, pos)
@@ -478,5 +483,5 @@ if __name__ == "__main__":
     #plot_ranks(df.copy(), metric='overfit', output_dir=None)
 
     # Make pairwise matrix
-    plot_ranked_pairs_winner(metric='test', df=df, tools=['autosklearn', 'autosklearnStacking', 'autosklearnStacking_f03'])
+    plot_ranked_pairs_winner(metric='test', df=df, tools=['autosklearn'] + [t for t in df['tool'].unique() if 'BBCScore' in t])
 

@@ -1803,6 +1803,7 @@ if __name__ == "__main__":
         help='The area from where to run'
     )
 
+
     args = parser.parse_args()
     if args.verbose:
         logger.setLevel(logging.DEBUG)
