@@ -16,6 +16,20 @@ import seaborn as sns
 # ====================================================================
 #                               Functions
 # ====================================================================
+MAPPING = {
+    "None": 'autosklearn',
+    "autosklearnBBCEnsembleSelection": 'Alg. 6',
+    "autosklearnBBCEnsembleSelectionNoPreSelect": 'Alg. 6\n(no Line 12.)',
+    "autosklearnBBCEnsembleSelectionPreSelectInES": 'Alg. 7',
+    "autosklearnBBCSMBOAndEnsembleSelectionBISMAC": 'Alg. 10',
+    "autosklearnBBCSMBOAndEnsembleSelection": 'Alg. 12',
+    "autosklearnBBCScoreEnsemble": 'Alg. 9',
+    "autosklearnBagging": 'bagging',
+    "autosklearnStacking": 'Alg. 14',
+    "autosklearnThresholdout": 'Alg. 17',
+}
+
+
 def parse_data(csv_location: str) -> pd.DataFrame:
     """
     Collects the data of a given experiment, annotated in a csv.
@@ -72,6 +86,53 @@ def parse_data(csv_location: str) -> pd.DataFrame:
     data = data.sort_values(by=['tool']+required_columns).reset_index(drop=True)
 
     return data
+
+
+def parse_overhead(csv_location, tools=['autosklearnStackingLatest_f65']):
+    """
+    Collects the data of a given experiment, annotated in a csv.
+    we expect the csv to look something like:
+    Index(['tool', 'task', 'fold', 'JobID', 'JobName', 'MaxRSS', 'Elapsed',
+       'MaxDiskRead', 'MaxDiskWrite', 'MaxVMSize', 'MinCPU', 'TotalCPU',
+       'SMACModelsSUCCESS', 'SMACModelsALL'],
+      dtype='object')
+    """
+    df = []
+    for df_file in glob.glob(os.path.join(csv_location, '*overhead.csv')):
+        df.append(
+            pd.read_csv(
+                df_file,
+                index_col=0,
+            )
+        )
+
+    if len(df) == 0:
+        print(f"ERROR: No overhead data to parse on {csv_location}")
+        return
+
+    df = pd.concat(df).reindex()
+
+    # Convert the K, M into a number so we can do stuff
+    for column in ['MaxRSS', 'MaxDiskRead', 'MaxDiskWrite', 'MaxVMSize']:
+        df[column] = df[column].replace(r'[KM]+$', '', regex=True).astype(float)
+
+    # Convert time to a number of seconds
+    for column in ['Elapsed', 'MinCPU', 'TotalCPU']:
+        df[column] = pd.to_timedelta(['00:' + x if x.count(':') < 2 else x for x in df[column]]).total_seconds()
+
+    # Collapse by fold
+    df = df.groupby(['tool', 'task']).mean().add_suffix('_mean').reset_index()
+
+    autosklearn_df = df[df['tool'] == 'autosklearn'].reset_index(drop=True)
+    numerical_columns = list(df.select_dtypes(include=[np.number]).columns.values)
+
+    return_df = []
+    for tool in tools:
+        desired_df = df[df['tool'] == tool].reset_index(drop=True)
+        for column in numerical_columns:
+            desired_df[column] = desired_df[column] - autosklearn_df[column]
+        return_df.append(desired_df)
+    return pd.concat(return_df).reindex()
 
 
 def plot_relative_performance(df: pd.DataFrame, tools: typing.List[str],
@@ -143,7 +204,7 @@ def plot_ranks(df: pd.DataFrame,
         'rank',
         data=df,
         ci='sd',
-        platte=sns.diverging_palette(250, 30, 65, center="dark", as_cmap=True),
+        platte=sns.diverging_palette(250, 30, 65, center="tab10", as_cmap=True),
         dodge=True,
         join=False,
         hue='tool',
@@ -176,6 +237,8 @@ def generate_pairwise_comparisson_matrix(df: pd.DataFrame,
     # Step 1: Calculate the mean and std of each fold,
     # That is, collapse the folds
     df = df.groupby(['tool', 'model', 'task']).mean().add_suffix('_mean').reset_index()
+
+    df.to_csv('raw_data.csv')
 
     # Just care about the provided tools
     if len(tools) < 1:
@@ -231,6 +294,24 @@ def generate_pairwise_comparisson_matrix(df: pd.DataFrame,
     return pairwise_comparisson_matrix
 
 
+def beautify_node_name(name: str, separator=' ') -> str:
+    """
+    Just makes a name nicer to plot in graph viz
+    """
+    # Some pre checks
+    if 'None_' in name: return 'autosklearn'
+    if 'bagging_' in name: return 'bagging'
+    # Mapping hold translations to make plotting better
+    print(f"recieved name={name}")
+    for key in sorted(MAPPING.keys(), key=len, reverse=True):
+        if key in name:
+            name = name.replace(key, MAPPING[key])
+            break
+    name = name.replace("_", separator)
+    print(f"returning name={name}")
+    return name
+
+
 def get_sorted_locked_winner_losser_tuples(pairwise_comparisson_matrix: pd.DataFrame
                                            ) -> typing.List[typing.Tuple[str, str]]:
     """
@@ -258,7 +339,8 @@ Vxy = Vzw and Vwz > Vyx. Where the majorities are equal, the majority with the s
         for opponent in pairwise_comparisson_matrix.columns:
             if opponent == candidate:
                 next
-            pair = (candidate, opponent)
+            pair = (beautify_node_name(candidate, separator='\n'),
+                    beautify_node_name(opponent, separator='\n'))
             # we count positive votes first
             number_of_votes = row[opponent]
             number_of_oposition = pairwise_comparisson_matrix.loc[opponent, candidate]
@@ -273,8 +355,60 @@ Vxy = Vzw and Vwz > Vyx. Where the majorities are equal, the majority with the s
 
     # Sort the list
     sorted_pairs = sorted(pairs, key=lambda x: x[1])
-    print(f"sorted=>{sorted_pairs}")
     return [pair for pair, v, o, in sorted_pairs]
+
+
+def plot_winner_losser_barplot(pairwise_comparisson_matrix: pd.DataFrame) -> None:
+    """
+    Make a plot to visualize winner and losers
+    """
+    # Plot also winners and losers
+    plot_frame = pairwise_comparisson_matrix.copy().reset_index()
+
+    # Beautify Name
+    plot_frame['index'] = plot_frame['index'].apply(lambda x: beautify_node_name(x))
+
+    winners = plot_frame.sum(axis=1)
+    total = (len(df['task'].unique() ) - 1) * (pairwise_comparisson_matrix.shape[0])
+    lossers = total - winners
+    plot_frame['counts'] = winners
+    plot_frame['type'] = 'winners'
+    plot_frame_lossers = plot_frame.copy()
+    plot_frame_lossers['counts'] = lossers
+    plot_frame_lossers['type'] = 'losses'
+
+    order = plot_frame.sort_values(by=['counts'])['index'].to_list()
+
+    #sns.set_theme()
+    sns.set_style("whitegrid")
+    sns.set(font_scale=1.05)
+    plot = sns.catplot(
+        #x="index",
+        #y="counts",
+        x="counts",
+        y="index",
+        hue='type',
+        kind='bar',
+        order=order,
+        data=plot_frame.append(plot_frame_lossers, ignore_index=True),
+        palette=sns.color_palette("tab10"),
+        legend=False,
+    )
+
+    plot.despine(left=True)
+    plt.legend(loc='lower right')
+    plt.show()
+
+
+def save_pairwise_to_disk(pairwise_comparisson_matrix: pd.DataFrame) -> None:
+    """
+    Save to disk after nice formatting
+    """
+    df = pairwise_comparisson_matrix.copy().reset_index()
+    df['index'] = df['index'].apply(lambda x: beautify_node_name(x))
+    df.set_index('index')
+    df.columns = [beautify_node_name(c) for c in df.columns]
+    df.to_csv('pairwise_comparisson_matrix.csv')
 
 
 def plot_ranked_pairs_winner(df: pd.DataFrame,
@@ -294,8 +428,9 @@ def plot_ranked_pairs_winner(df: pd.DataFrame,
     pairwise_comparisson_matrix = generate_pairwise_comparisson_matrix(
         df, metric, tools
     )
-    print(f"pairwise_comparisson_matrix={pairwise_comparisson_matrix}")
-    pairwise_comparisson_matrix.to_csv('pairwise_comparisson_matrix.csv')
+    save_pairwise_to_disk(pairwise_comparisson_matrix)
+
+    plot_winner_losser_barplot(pairwise_comparisson_matrix)
 
     # Sort and lock
     # a sorted list of locked winners (winner, losser)
@@ -303,16 +438,47 @@ def plot_ranked_pairs_winner(df: pd.DataFrame,
 
     G = nx.DiGraph()
     G.add_edges_from(pair_of_wrinners)
-    #pos = nx.spring_layout(G)
-    pos = nx.spring_layout(G,k=0.95,iterations=50)
-    # k controls the distance between the nodes and varies between 0 and 1
-    # iterations is the number of times simulated annealing is run
-    # default k =0.1 and iterations=50
-    nx.draw_networkx_nodes(G, pos, cmap=plt.get_cmap('jet'),
-                           node_size = 500, node_color='none')
-    nx.draw_networkx_labels(G, pos)
-    nx.draw_networkx_edges(G, pos, edgelist=pair_of_wrinners, edge_color='b', arrows=True, arrowsize=20)
-    plt.show()
+
+    # Find the source of the DAG
+    targets, all_nodes = set(), set()
+    for e in G.edges():
+        source, target = e
+        targets.add(target)
+        all_nodes.add(target)
+        all_nodes.add(source)
+    root = all_nodes - targets
+    print(f"root={root} len")
+    color_map = ['#FFFFFF' if node not in root else '#1f77b4' for node in G]
+
+    # https://stackoverflow.com/questions/55859493/how-to-place-nodes-in-a-specific-position-networkx
+    #for prog in ['neato', 'circo', 'dot', 'fdp']:
+    for prog in ['dot']:
+        nx.draw(
+            G,
+            node_size=10000,
+            #node_color='#FFFFFF',
+            node_color=color_map,
+            #node_color='#c3acf2',
+            linewidths=2,
+            edge_color='black',
+            arrowsize=50,
+            with_labels=True,
+            labels={n: n for n in G.nodes},
+            #node_shape='d',
+            font_color='#000000',
+            font_size=15,
+            pos=nx.drawing.nx_agraph.graphviz_layout(
+                G,
+                prog=prog,
+                args='-Grankdir=LR -Gnodesep=305 -Granksep=305 -sep=305'
+            )
+        )
+        ax = plt.gca()  # to get the current axis
+        ax.collections[0].set_edgecolor("#000000")
+
+        plt.tight_layout()
+        plt.show()
+        plt.close()
 
 
 def plot_testsubtrain_history(csv_location: str, tools: typing.List[str],
@@ -482,6 +648,14 @@ if __name__ == "__main__":
     # Plot Ranking Loss
     #plot_ranks(df.copy(), metric='overfit', output_dir=None)
 
-    # Make pairwise matrix
-    plot_ranked_pairs_winner(metric='test', df=df, tools=['autosklearn'] + [t for t in df['tool'].unique() if 'BBCScore' in t])
+    # get overall winner with ranked pairs
+    plot_ranked_pairs_winner(metric='test', df=df, tools=[t for t in df['tool'].unique()])
+    #plot_ranked_pairs_winner(metric='test', df=df, tools=['autosklearn'] + [t for t in df['tool'].unique() if 'Stacking' in t])
+    #plot_ranked_pairs_winner(metric='test', df=df, tools=['autosklearn'] + [t for t in df['tool'].unique() if 'Thres' in t])
+
+    # get the overhead table
+    #overhead = parse_overhead(args.csv_location, tools=['autosklearnThresholdout_scale05_ensemble0'])
+    #overhead = parse_overhead(args.csv_location, tools=['autosklearnStackingLatest_f50'])
+    #overhead = parse_overhead(args.csv_location, tools=['autosklearnBBCEnsembleSelectionLatest_B_50_Nb_50'])
+    #overhead.to_csv('overhead.csv')
 

@@ -1,0 +1,99 @@
+################################### Autosklearn runs with different seeds
+# Holdout
+python manager.py -f autosklearnCOPYALL -b master_thesis --partition bosch_cpu-cascadelake --total_fold 5 --cores 1 --memory 8G --runtime 3600 --run_dir /home/riverav/AUTOML_BENCHMARK/autosklearnCOPYALL/dev/2020.12.01-21.26.54
+python manager.py -f autosklearnCOPYALL -b master_thesis --partition bosch_cpu-cascadelake --total_fold 5 --cores 1 --memory 8G --runtime 3600 --run_dir /home/riverav/AUTOML_BENCHMARK/autosklearnCOPYALL/dev/2020.12.04-12.13.31
+python manager.py -f autosklearnCOPYALL -b master_thesis --partition bosch_cpu-cascadelake --total_fold 5 --cores 1 --memory 8G --runtime 3600 --run_dir /home/riverav/AUTOML_BENCHMARK/autosklearnCOPYALL/dev/2020.12.04-22.30.24
+python manager.py -f autosklearnCOPYALL -b master_thesis --partition bosch_cpu-cascadelake --total_fold 5 --cores 1 --memory 8G --runtime 3600 --run_dir /home/riverav/AUTOML_BENCHMARK/autosklearnCOPYALL/dev/2020.12.04-23.32.43
+python manager.py -f autosklearnCOPYALL -b master_thesis --partition bosch_cpu-cascadelake --total_fold 5 --cores 1 --memory 8G --runtime 3600 
+Creating run directory: /home/riverav/AUTOML_BENCHMARK/autosklearnCOPYALL/dev/2020.12.05-00.24.10
+
+# CV
+python manager.py -f autosklearnCOPYALL -b master_thesis --partition bosch_cpu-cascadelake --total_fold 5 --cores 1 --memory 8G --runtime 3600 --run_dir /home/riverav/AUTOML_BENCHMARK/autosklearnCOPYALL/dev/2020.12.05-20.45.58
+python manager.py -f autosklearnCOPYALL -b master_thesis --partition bosch_cpu-cascadelake --total_fold 5 --cores 1 --memory 8G --runtime 3600 --run_dir /home/riverav/AUTOML_BENCHMARK/autosklearnCOPYALL/dev/2020.12.05-21.16.40
+python manager.py -f autosklearnCOPYALL -b master_thesis --partition bosch_cpu-cascadelake --total_fold 5 --cores 1 --memory 8G --runtime 3600  
+Creating run directory: /home/riverav/AUTOML_BENCHMARK/autosklearnCOPYALL/dev/2020.12.05-23.20.18
+
+# ##########################################################################
+# Ensemble size 1
+#/home/riverav/AUTOML_BENCHMARK/autosklearnCOPYALL/ dev/2020.12.05-20.45.58
+# ##########################################################################
+#autosklearnBBCScoreEnsemble B=100 N=100%
+python manager_ensemble.py -f autosklearnBBCScoreEnsemble -b master_thesis --partition bosch_cpu-cascadelake --total_fold 5 --cores 1 --memory 8G --runtime 3600  --input_dir '/home/riverav/AUTOML_BENCHMARK/autosklearnCOPYALL/dev/2020.12.05-20.45.58/*/*/debug/' --ensemble_size 1 --bbc_cv_sample_size 1.0 --bbc_cv_n_bootstrap 100  --run_dir /home/riverav/AUTOML_BENCHMARK/ENSEMBLE_ISOLATED/autosklearnBBCScoreEnsemble_es1_B100_N1.0/2020.12.05-22.43.17
+#autosklearnBBCScoreEnsemble B=10 N=100%
+python manager_ensemble.py -f autosklearnBBCScoreEnsemble -b master_thesis --partition bosch_cpu-cascadelake --total_fold 5 --cores 1 --memory 8G --runtime 3600  --input_dir '/home/riverav/AUTOML_BENCHMARK/autosklearnCOPYALL/dev/2020.12.05-20.45.58/*/*/debug/' --ensemble_size 1 --bbc_cv_sample_size 1.0 --bbc_cv_n_bootstrap 10 --run_dir /home/riverav/AUTOML_BENCHMARK/ENSEMBLE_ISOLATED/autosklearnBBCScoreEnsemble_es1_B10_N1.0/2020.12.05-22.50.35
+#autosklearnBBCScoreEnsemble B=50 N=50%
+python manager_ensemble.py -f autosklearnBBCScoreEnsemble -b master_thesis --partition bosch_cpu-cascadelake --total_fold 5 --cores 1 --memory 8G --runtime 3600  --input_dir '/home/riverav/AUTOML_BENCHMARK/autosklearnCOPYALL/dev/2020.12.05-20.45.58/*/*/debug/' --ensemble_size 1 --bbc_cv_sample_size 0.5 --bbc_cv_n_bootstrap 50 --run_dir /home/riverav/AUTOML_BENCHMARK/ENSEMBLE_ISOLATED/autosklearnBBCScoreEnsemble_es1_B50_N0.5/2020.12.05-23.01.52
+
+#autosklearnBBCEnsembleSelection B=100 N=100%
+python manager_ensemble.py -f autosklearnBBCEnsembleSelection -b master_thesis --partition bosch_cpu-cascadelake --total_fold 5 --cores 1 --memory 8G --runtime 3600  --input_dir '/home/riverav/AUTOML_BENCHMARK/autosklearnCOPYALL/dev/2020.12.05-20.45.58/*/*/debug/' --ensemble_size 1 --bbc_cv_sample_size 1.0 --bbc_cv_n_bootstrap 100 --run_dir /home/riverav/AUTOML_BENCHMARK/ENSEMBLE_ISOLATED/autosklearnBBCEnsembleSelection_es1_B100_N1.0/2020.12.05-23.09.01
+#autosklearnBBCEnsembleSelection B=10 N=100%
+python manager_ensemble.py -f autosklearnBBCEnsembleSelection -b master_thesis --partition bosch_cpu-cascadelake --total_fold 5 --cores 1 --memory 8G --runtime 3600  --input_dir '/home/riverav/AUTOML_BENCHMARK/autosklearnCOPYALL/dev/2020.12.05-20.45.58/*/*/debug/' --ensemble_size 1 --bbc_cv_sample_size 1.0 --bbc_cv_n_bootstrap 10 --run_dir /home/riverav/AUTOML_BENCHMARK/ENSEMBLE_ISOLATED/autosklearnBBCEnsembleSelection_es1_B10_N1.0/2020.12.05-23.15.59
+#autosklearnBBCEnsembleSelection B=50 N=50%
+python manager_ensemble.py -f autosklearnBBCEnsembleSelection -b master_thesis --partition bosch_cpu-cascadelake --total_fold 5 --cores 1 --memory 8G --runtime 3600  --input_dir '/home/riverav/AUTOML_BENCHMARK/autosklearnCOPYALL/dev/2020.12.05-20.45.58/*/*/debug/' --ensemble_size 1 --bbc_cv_sample_size 0.5 --bbc_cv_n_bootstrap 50 --run_dir /home/riverav/AUTOML_BENCHMARK/ENSEMBLE_ISOLATED/autosklearnBBCEnsembleSelection_es1_B50_N0.5/2020.12.05-23.21.14
+
+#autosklearnBBCEnsembleSelectionNoPreSelect B=100 N=100%
+python manager_ensemble.py -f autosklearnBBCEnsembleSelectionNoPreSelect -b master_thesis --partition bosch_cpu-cascadelake --total_fold 5 --cores 1 --memory 8G --runtime 3600  --input_dir '/home/riverav/AUTOML_BENCHMARK/autosklearnCOPYALL/dev/2020.12.05-20.45.58/*/*/debug/' --ensemble_size 1 --bbc_cv_sample_size 1.0 --bbc_cv_n_bootstrap 100 --run_dir /home/riverav/AUTOML_BENCHMARK/ENSEMBLE_ISOLATED/autosklearnBBCEnsembleSelectionNoPreSelect_es1_B100_N1.0/2020.12.05-23.29.21
+#autosklearnBBCEnsembleSelectionNoPreSelect B=10 N=100%
+python manager_ensemble.py -f autosklearnBBCEnsembleSelectionNoPreSelect -b master_thesis --partition bosch_cpu-cascadelake --total_fold 5 --cores 1 --memory 8G --runtime 3600  --input_dir '/home/riverav/AUTOML_BENCHMARK/autosklearnCOPYALL/dev/2020.12.05-20.45.58/*/*/debug/' --ensemble_size 1 --bbc_cv_sample_size 1.0 --bbc_cv_n_bootstrap 10 --run_dir /home/riverav/AUTOML_BENCHMARK/ENSEMBLE_ISOLATED/autosklearnBBCEnsembleSelectionNoPreSelect_es1_B10_N1.0/2020.12.05-23.50.13
+#autosklearnBBCEnsembleSelectionNoPreSelect B=50 N=50%
+python manager_ensemble.py -f autosklearnBBCEnsembleSelectionNoPreSelect -b master_thesis --partition bosch_cpu-cascadelake --total_fold 5 --cores 1 --memory 8G --runtime 3600  --input_dir '/home/riverav/AUTOML_BENCHMARK/autosklearnCOPYALL/dev/2020.12.05-20.45.58/*/*/debug/' --ensemble_size 1 --bbc_cv_sample_size 0.5 --bbc_cv_n_bootstrap 50 --run_dir /home/riverav/AUTOML_BENCHMARK/ENSEMBLE_ISOLATED/autosklearnBBCEnsembleSelectionNoPreSelect_es1_B50_N0.5/2020.12.05-23.54.12
+
+#autosklearnBBCEnsembleSelectionPreSelectInES B=100 N=100%
+python manager_ensemble.py -f autosklearnBBCEnsembleSelectionPreSelectInES -b master_thesis --partition bosch_cpu-cascadelake --total_fold 5 --cores 1 --memory 8G --runtime 3600  --input_dir '/home/riverav/AUTOML_BENCHMARK/autosklearnCOPYALL/dev/2020.12.05-20.45.58/*/*/debug/' --ensemble_size 1 --bbc_cv_sample_size 1.0 --bbc_cv_n_bootstrap 100 --run_dir /home/riverav/AUTOML_BENCHMARK/ENSEMBLE_ISOLATED/autosklearnBBCEnsembleSelectionPreSelectInES_es1_B100_N1.0/2020.12.06-00.05.52
+#autosklearnBBCEnsembleSelectionPreSelectInES B=10 N=100%
+python manager_ensemble.py -f autosklearnBBCEnsembleSelectionPreSelectInES -b master_thesis --partition bosch_cpu-cascadelake --total_fold 5 --cores 1 --memory 8G --runtime 3600  --input_dir '/home/riverav/AUTOML_BENCHMARK/autosklearnCOPYALL/dev/2020.12.05-20.45.58/*/*/debug/' --ensemble_size 1 --bbc_cv_sample_size 1.0 --bbc_cv_n_bootstrap 10 --run_dir /home/riverav/AUTOML_BENCHMARK/ENSEMBLE_ISOLATED/autosklearnBBCEnsembleSelectionPreSelectInES_es1_B10_N1.0/2020.12.06-00.02.55
+#autosklearnBBCEnsembleSelectionPreSelectInES B=50 N=50%
+python manager_ensemble.py -f autosklearnBBCEnsembleSelectionPreSelectInES -b master_thesis --partition bosch_cpu-cascadelake --total_fold 5 --cores 1 --memory 8G --runtime 3600  --input_dir '/home/riverav/AUTOML_BENCHMARK/autosklearnCOPYALL/dev/2020.12.05-20.45.58/*/*/debug/' --ensemble_size 1 --bbc_cv_sample_size 0.5 --bbc_cv_n_bootstrap 50 --run_dir /home/riverav/AUTOML_BENCHMARK/ENSEMBLE_ISOLATED/autosklearnBBCEnsembleSelectionPreSelectInES_es1_B50_N0.5/2020.12.05-23.59.11
+
+#bagging
+python manager_ensemble.py -f bagging -b master_thesis --partition bosch_cpu-cascadelake --total_fold 5 --cores 1 --memory 8G --runtime 3600  --input_dir '/home/riverav/AUTOML_BENCHMARK/autosklearnCOPYALL/dev/2020.12.05-20.45.58/*/*/debug/' --ensemble_size 1 --bbc_cv_sample_size 1.0 --bbc_cv_n_bootstrap 100 --run_dir /home/riverav/AUTOML_BENCHMARK/ENSEMBLE_ISOLATED/bagging_es1_B100_N1.0/2020.12.06-00.11.48
+
+#None
+python manager_ensemble.py -f None -b master_thesis --partition bosch_cpu-cascadelake --total_fold 5 --cores 1 --memory 8G --runtime 3600  --input_dir '/home/riverav/AUTOML_BENCHMARK/autosklearnCOPYALL/dev/2020.12.05-20.45.58/*/*/debug/' --ensemble_size 1 --run_dir /home/riverav/AUTOML_BENCHMARK/ENSEMBLE_ISOLATED/None_es1_B100_N0.5/2020.12.05-22.38.23
+
+
+# ##########################################################################
+# Ensemble size 50
+#/home/riverav/AUTOML_BENCHMARK/autosklearnCOPYALL/ dev/2020.12.05-20.45.58
+# ##########################################################################
+#autosklearnBBCScoreEnsemble B=100 N=100%
+python manager_ensemble.py -f autosklearnBBCScoreEnsemble -b master_thesis --partition bosch_cpu-cascadelake --total_fold 5 --cores 1 --memory 8G --runtime 3600  --input_dir '/home/riverav/AUTOML_BENCHMARK/autosklearnCOPYALL/dev/2020.12.05-20.45.58/*/*/debug/' --bbc_cv_sample_size 1.0 --bbc_cv_n_bootstrap 100 --task adult --fold 1 --ensemble_size 10 --run_dir /home/riverav/AUTOML_BENCHMARK/ENSEMBLE_ISOLATED/autosklearnBBCScoreEnsemble_es10_B100_N1.0/2020.12.06-13.00.01
+
+
+# ##########################################################################
+# Ensemble size 50
+#/home/riverav/AUTOML_BENCHMARK/autosklearnCOPYALL/ dev/2020.12.05-20.45.58
+# ##########################################################################
+#autosklearnBBCScoreEnsemble B=100 N=100%
+python manager_ensemble.py -f autosklearnBBCScoreEnsemble -b master_thesis --partition bosch_cpu-cascadelake --total_fold 5 --cores 1 --memory 8G --runtime 3600  --input_dir '/home/riverav/AUTOML_BENCHMARK/autosklearnCOPYALL/dev/2020.12.05-20.45.58/*/*/debug/' --bbc_cv_sample_size 1.0 --bbc_cv_n_bootstrap 100 --run_dir /home/riverav/AUTOML_BENCHMARK/ENSEMBLE_ISOLATED/autosklearnBBCScoreEnsemble_es50_B100_N1.0/2020.12.06-01.55.32
+#autosklearnBBCScoreEnsemble B=10 N=100%
+python manager_ensemble.py -f autosklearnBBCScoreEnsemble -b master_thesis --partition bosch_cpu-cascadelake --total_fold 5 --cores 1 --memory 8G --runtime 3600  --input_dir '/home/riverav/AUTOML_BENCHMARK/autosklearnCOPYALL/dev/2020.12.05-20.45.58/*/*/debug/' --bbc_cv_sample_size 1.0 --bbc_cv_n_bootstrap 10 --run_dir /home/riverav/AUTOML_BENCHMARK/ENSEMBLE_ISOLATED/autosklearnBBCScoreEnsemble_es50_B10_N1.0/2020.12.06-02.24.18
+#autosklearnBBCScoreEnsemble B=50 N=50%
+python manager_ensemble.py -f autosklearnBBCScoreEnsemble -b master_thesis --partition bosch_cpu-cascadelake --total_fold 5 --cores 1 --memory 8G --runtime 3600  --input_dir '/home/riverav/AUTOML_BENCHMARK/autosklearnCOPYALL/dev/2020.12.05-20.45.58/*/*/debug/' --bbc_cv_sample_size 0.5 --bbc_cv_n_bootstrap 50 --run_dir /home/riverav/AUTOML_BENCHMARK/ENSEMBLE_ISOLATED/autosklearnBBCScoreEnsemble_es50_B50_N0.5/2020.12.06-01.19.44
+
+#autosklearnBBCEnsembleSelection B=100 N=100%
+python manager_ensemble.py -f autosklearnBBCEnsembleSelection -b master_thesis --partition bosch_cpu-cascadelake --total_fold 5 --cores 1 --memory 8G --runtime 3600  --input_dir '/home/riverav/AUTOML_BENCHMARK/autosklearnCOPYALL/dev/2020.12.05-20.45.58/*/*/debug/' --bbc_cv_sample_size 1.0 --bbc_cv_n_bootstrap 100 --run_dir /home/riverav/AUTOML_BENCHMARK/ENSEMBLE_ISOLATED/autosklearnBBCEnsembleSelection_es50_B100_N1.0/2020.12.06-01.59.17
+#autosklearnBBCEnsembleSelection B=10 N=100%
+python manager_ensemble.py -f autosklearnBBCEnsembleSelection -b master_thesis --partition bosch_cpu-cascadelake --total_fold 5 --cores 1 --memory 8G --runtime 3600  --input_dir '/home/riverav/AUTOML_BENCHMARK/autosklearnCOPYALL/dev/2020.12.05-20.45.58/*/*/debug/' --bbc_cv_sample_size 1.0 --bbc_cv_n_bootstrap 10 --run_dir /home/riverav/AUTOML_BENCHMARK/ENSEMBLE_ISOLATED/autosklearnBBCEnsembleSelection_es50_B10_N1.0/2020.12.06-14.05.22
+#autosklearnBBCEnsembleSelection B=50 N=50%
+python manager_ensemble.py -f autosklearnBBCEnsembleSelection -b master_thesis --partition bosch_cpu-cascadelake --total_fold 5 --cores 1 --memory 8G --runtime 3600  --input_dir '/home/riverav/AUTOML_BENCHMARK/autosklearnCOPYALL/dev/2020.12.05-20.45.58/*/*/debug/' --bbc_cv_sample_size 0.5 --bbc_cv_n_bootstrap 50 --run_dir /home/riverav/AUTOML_BENCHMARK/ENSEMBLE_ISOLATED/autosklearnBBCEnsembleSelection_es50_B50_N0.5/2020.12.06-01.15.50
+
+#autosklearnBBCEnsembleSelectionNoPreSelect B=100 N=100%
+python manager_ensemble.py -f autosklearnBBCEnsembleSelectionNoPreSelect -b master_thesis --partition bosch_cpu-cascadelake --total_fold 5 --cores 1 --memory 8G --runtime 3600  --input_dir '/home/riverav/AUTOML_BENCHMARK/autosklearnCOPYALL/dev/2020.12.05-20.45.58/*/*/debug/' --bbc_cv_sample_size 1.0 --bbc_cv_n_bootstrap 100 --run_dir /home/riverav/AUTOML_BENCHMARK/ENSEMBLE_ISOLATED/autosklearnBBCEnsembleSelectionNoPreSelect_es50_B100_N1.0/2020.12.06-02.04.06
+#autosklearnBBCEnsembleSelectionNoPreSelect B=10 N=100%
+python manager_ensemble.py -f autosklearnBBCEnsembleSelectionNoPreSelect -b master_thesis --partition bosch_cpu-cascadelake --total_fold 5 --cores 1 --memory 8G --runtime 3600  --input_dir '/home/riverav/AUTOML_BENCHMARK/autosklearnCOPYALL/dev/2020.12.05-20.45.58/*/*/debug/' --bbc_cv_sample_size 1.0 --bbc_cv_n_bootstrap 10 
+#autosklearnBBCEnsembleSelectionNoPreSelect B=50 N=50%
+python manager_ensemble.py -f autosklearnBBCEnsembleSelectionNoPreSelect -b master_thesis --partition bosch_cpu-cascadelake --total_fold 5 --cores 1 --memory 8G --runtime 3600  --input_dir '/home/riverav/AUTOML_BENCHMARK/autosklearnCOPYALL/dev/2020.12.05-20.45.58/*/*/debug/' --bbc_cv_sample_size 0.5 --bbc_cv_n_bootstrap 50 --run_dir  /home/riverav/AUTOML_BENCHMARK/ENSEMBLE_ISOLATED/autosklearnBBCEnsembleSelectionNoPreSelect_es50_B50_N0.5/2020.12.06-01.10.40
+
+#autosklearnBBCEnsembleSelectionPreSelectInES B=100 N=100%
+python manager_ensemble.py -f autosklearnBBCEnsembleSelectionPreSelectInES -b master_thesis --partition bosch_cpu-cascadelake --total_fold 5 --cores 1 --memory 8G --runtime 3600  --input_dir '/home/riverav/AUTOML_BENCHMARK/autosklearnCOPYALL/dev/2020.12.05-20.45.58/*/*/debug/' --bbc_cv_sample_size 1.0 --bbc_cv_n_bootstrap 100 --run_dir /home/riverav/AUTOML_BENCHMARK/ENSEMBLE_ISOLATED/autosklearnBBCEnsembleSelectionPreSelectInES_es50_B100_N1.0/2020.12.06-00.56.08
+#autosklearnBBCEnsembleSelectionPreSelectInES B=10 N=100%
+ python manager_ensemble.py -f autosklearnBBCEnsembleSelectionPreSelectInES -b master_thesis --partition bosch_cpu-cascadelake --total_fold 5 --cores 1 --memory 8G --runtime 3600  --input_dir '/home/riverav/AUTOML_BENCHMARK/autosklearnCOPYALL/dev/2020.12.05-20.45.58/*/*/debug/' --bbc_cv_sample_size 1.0 --bbc_cv_n_bootstrap 10 --run_dir /home/riverav/AUTOML_BENCHMARK/ENSEMBLE_ISOLATED/autosklearnBBCEnsembleSelectionPreSelectInES_es50_B10_N1.0/2020.12.06-01.01.28
+#autosklearnBBCEnsembleSelectionPreSelectInES B=50 N=50%
+python manager_ensemble.py -f autosklearnBBCEnsembleSelectionPreSelectInES -b master_thesis --partition bosch_cpu-cascadelake --total_fold 5 --cores 1 --memory 8G --runtime 3600  --input_dir '/home/riverav/AUTOML_BENCHMARK/autosklearnCOPYALL/dev/2020.12.05-20.45.58/*/*/debug/' --bbc_cv_sample_size 0.5 --bbc_cv_n_bootstrap 50 --run_dir /home/riverav/AUTOML_BENCHMARK/ENSEMBLE_ISOLATED/autosklearnBBCEnsembleSelectionPreSelectInES_es50_B50_N0.5/2020.12.06-01.04.54
+
+#bagging
+python manager_ensemble.py -f bagging -b master_thesis --partition bosch_cpu-cascadelake --total_fold 5 --cores 1 --memory 8G --runtime 3600  --input_dir '/home/riverav/AUTOML_BENCHMARK/autosklearnCOPYALL/dev/2020.12.05-20.45.58/*/*/debug/' --bbc_cv_sample_size 1.0 --bbc_cv_n_bootstrap 100 --run_dir /home/riverav/AUTOML_BENCHMARK/ENSEMBLE_ISOLATED/bagging_es50_B100_N1.0/2020.12.06-00.17.19
+
+#None
+python manager_ensemble.py -f None -b master_thesis --partition bosch_cpu-cascadelake --total_fold 5 --cores 1 --memory 8G --runtime 3600  --input_dir '/home/riverav/AUTOML_BENCHMARK/autosklearnCOPYALL/dev/2020.12.05-20.45.58/*/*/debug/' --bbc_cv_sample_size 1.0 --bbc_cv_n_bootstrap 100 --run_dir /home/riverav/AUTOML_BENCHMARK/ENSEMBLE_ISOLATED/None_es50_B100_N1.0/2020.12.06-00.21.52
