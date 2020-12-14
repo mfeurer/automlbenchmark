@@ -1,5 +1,6 @@
 import argparse
 import glob
+import logging
 import typing
 import os
 
@@ -12,6 +13,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 import seaborn as sns
+
+logger = logging.getLogger()
 
 # ====================================================================
 #                               Functions
@@ -88,7 +91,10 @@ def parse_data(csv_location: str) -> pd.DataFrame:
     return data
 
 
-def parse_overhead(csv_location, tools=['autosklearnStackingLatest_f65']):
+def parse_overhead(csv_location, tools=None, keys=['MaxRSS',
+                                                   'MaxVMSize',
+                                                   'SMACModelsSUCCESS',
+                                                   'SMACModelsALL']):
     """
     Collects the data of a given experiment, annotated in a csv.
     we expect the csv to look something like:
@@ -110,29 +116,23 @@ def parse_overhead(csv_location, tools=['autosklearnStackingLatest_f65']):
         print(f"ERROR: No overhead data to parse on {csv_location}")
         return
 
-    df = pd.concat(df).reindex()
+    df = pd.concat(df).reset_index(drop=True)
 
     # Convert the K, M into a number so we can do stuff
-    for column in ['MaxRSS', 'MaxDiskRead', 'MaxDiskWrite', 'MaxVMSize']:
+    for column in list(set.intersection({'MaxRSS', 'MaxDiskRead', 'MaxDiskWrite', 'MaxVMSize'}, set(keys))):
         df[column] = df[column].replace(r'[KM]+$', '', regex=True).astype(float)
 
     # Convert time to a number of seconds
-    for column in ['Elapsed', 'MinCPU', 'TotalCPU']:
+    for column in list(set.intersection({'Elapsed', 'MinCPU', 'TotalCPU'}, set(keys))):
         df[column] = pd.to_timedelta(['00:' + x if x.count(':') < 2 else x for x in df[column]]).total_seconds()
 
     # Collapse by fold
-    df = df.groupby(['tool', 'task']).mean().add_suffix('_mean').reset_index()
-
-    autosklearn_df = df[df['tool'] == 'autosklearn'].reset_index(drop=True)
-    numerical_columns = list(df.select_dtypes(include=[np.number]).columns.values)
-
-    return_df = []
-    for tool in tools:
-        desired_df = df[df['tool'] == tool].reset_index(drop=True)
-        for column in numerical_columns:
-            desired_df[column] = desired_df[column] - autosklearn_df[column]
-        return_df.append(desired_df)
-    return pd.concat(return_df).reindex()
+    data = []
+    for key in keys:
+        data.append(
+            df[['tool', 'task', 'fold', key]].groupby(['task', 'tool']).mean().unstack().drop('fold', 1)
+        )
+    return pd.concat(data, axis='columns')
 
 
 def plot_relative_performance(df: pd.DataFrame, tools: typing.List[str],
@@ -580,36 +580,83 @@ def plot_testsubtrain_history(csv_location: str, tools: typing.List[str],
     plt.show()
 
 
-# def printsomethind():
-#     experiment_results = {}
-#     for tool_task, test_value in data.groupby(['tool', 'task']).mean()['test'].to_dict().items():
-#         tool, task = tool_task
-#         if tool not in experiment_results:
-#             experiment_results[tool] = {}
-#         if task not in experiment_results[tool]:
-#             experiment_results[tool][task] = test_value
-#
-#     summary = []
-#     for tool in experiment_results:
-#         row = experiment_results[tool]
-#         row['tool'] = tool
-#         summary.append(row)
-#
-#     summary = pd.DataFrame(summary)
-#     print(summary)
-#
-#     # The best per task:
-#     for task in [c for c in summary.columns if c != 'tool']:
-#         best = summary[task].argmax()
-#         print(f"{task}(best) = {summary['tool'].iloc[best]}")
-#
-#     # How many times better than autosklearn
-#     summary_no_tool_column = summary.loc[:, summary.columns != 'tool']
-#     baseline_results = summary[summary['tool']=='autosklearn'].loc[:, summary[summary['tool']=='autosklearn'].columns != 'tool']
-#     for index, row in summary.iterrows():
-#         tool = row['tool']
-#         if tool == 'autosklearn': continue
-#         print(f"{tool} (better_than_baseline): {np.count_nonzero(summary_no_tool_column.iloc[index] > baseline_results)}")
+def generate_ranking_per_seed_per_dataset(dfs: typing.List[pd.DataFrame], metric: str = 'test') -> pd.DataFrame:
+    """
+    Generates a ranking dataframe when seeds and dataset are of paired population.
+    That is, seed and dataset is same for a group of configurations to try
+
+    Args:
+        dfs (List[pdDataFrame]): A list of dataframes each representing a seed
+
+    Returns:
+        pd.DataFrame: with the ranking
+    """
+
+    # Collapse each input frame on the fold dimension
+    dfs = [df.groupby(['tool', 'model', 'task']
+                      ).mean().add_suffix('_mean').reset_index() for df in dfs]
+
+    # Tag each frame with a seed
+    for i, df in enumerate(dfs):
+        dfs[i]['seed'] = i
+        dfs[i].set_index('seed', append=True, inplace=True)
+
+    df = pd.concat(dfs).reset_index()
+    df.to_csv('raw_data.csv')
+
+    # Create a ranking for seed and dataset
+    result = pd.DataFrame(index=df['tool'].unique())
+    for seed in df['seed'].unique():
+        for task in df['task'].unique():
+            this_frame = df.loc[(df['seed']==seed) & (df['task']==task)].set_index('tool')
+            this_frame[f"{seed}_{task}"] = this_frame[metric + '_mean'].rank(
+                na_option='bottom',
+                ascending=False,
+                method='min',
+            )
+            #print(f"seed={seed} task={task} this_frame={this_frame}")
+            result[f"{seed}_{task}"] = this_frame[f"{seed}_{task}"]
+
+    result['Avg. Ranking'] = result.mean(axis=1)
+    return result
+
+
+def generate_ranking_per_dataset(dfs: typing.List[pd.DataFrame], metric: str = 'test') -> pd.DataFrame:
+    """
+    Generates a ranking dataframe when seeds and dataset are of paired population.
+    That is, seed and dataset is same for a group of configurations to try
+
+    Args:
+        dfs (List[pdDataFrame]): A list of dataframes each representing a seed
+
+    Returns:
+        pd.DataFrame: with the ranking
+    """
+    # Tag each frame with a seed
+    for i, df in enumerate(dfs):
+        dfs[i]['seed'] = i
+    df = pd.concat(dfs).reset_index()
+
+    # Collapse each input frame on the fold dimension
+    df = df.groupby(['tool', 'model', 'task']
+                      ).mean().add_suffix('_mean').reset_index()
+
+    df.to_csv('raw_data.csv')
+
+    # Create a ranking for seed and dataset
+    result = pd.DataFrame(index=df['tool'].unique())
+    for task in df['task'].unique():
+        this_frame = df.loc[(df['task']==task)].set_index('tool')
+        this_frame[f"{task}"] = this_frame[metric + '_mean'].rank(
+            na_option='bottom',
+            ascending=False,
+            method='min',
+        )
+        print(f"task={task} this_frame={this_frame}")
+        result[f"{task}"] = this_frame[f"{task}"]
+
+    result['Avg. Ranking'] = result.mean(axis=1)
+    return result
 
 
 if __name__ == "__main__":
@@ -618,7 +665,15 @@ if __name__ == "__main__":
         '--csv_location',
         help='Where to look for csv files',
         type=str,
-        required=True,
+        action='extend',
+        nargs='+',
+    )
+    parser.add_argument(
+        '--metric',
+        help='Test or overfit metric',
+        default='test',
+        type=str,
+        required=False,
     )
     parser.add_argument(
         '--experiment',
@@ -631,31 +686,30 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     # First get the data
-    df = parse_data(args.csv_location)
-
-    tools = df['tool'].unique()
-    #for category in ['Stacking', 'BBCSMBOAnd', 'BBCEnsembleSelection', 'ScoreEnsemb']:
-    #    this_tools = [t for t in tools if category in t]
-    #    # Relative performance difference
-    #    plot_relative_performance(df.copy(),
-    #                              tools = this_tools,
-    #                              metric='test', output_dir=None)
-    #    # Plot the training/test history
-    #    plot_testsubtrain_history(args.csv_location,
-    #                              tools = ['autosklearn'] + this_tools, output_dir=None)
-    #plot_relative_performance(df.copy(), tools = ['autosklearnStacking', 'autosklearnBBCEnsembleSelection_B_50_Nb_25'], metric='overfit', output_dir=None)
-
-    # Plot Ranking Loss
-    #plot_ranks(df.copy(), metric='overfit', output_dir=None)
+    dfs = []
+    print(f"args={args.csv_location}")
+    for i, csv_location in enumerate(args.csv_location):
+        logger.info(f"Working in {csv_location}")
+        df = parse_data(csv_location)
+        dfs.append(df)
+        pairwise_comparisson_matrix = generate_pairwise_comparisson_matrix(
+            df, metric='test', tools=df['tool'].unique(),
+        )
+        pairwise_comparisson_matrix.to_csv("pairwise_{i}.csv")
+    ranking = generate_ranking_per_seed_per_dataset(dfs)
+    #ranking = generate_ranking_per_dataset(dfs)
+    ranking.to_csv('ranking_seed_dataset.csv')
 
     # get overall winner with ranked pairs
-    plot_ranked_pairs_winner(metric='test', df=df, tools=[t for t in df['tool'].unique()])
+    #plot_ranked_pairs_winner(metric='test', df=df, tools=[t for t in df['tool'].unique()])
     #plot_ranked_pairs_winner(metric='test', df=df, tools=['autosklearn'] + [t for t in df['tool'].unique() if 'Stacking' in t])
     #plot_ranked_pairs_winner(metric='test', df=df, tools=['autosklearn'] + [t for t in df['tool'].unique() if 'Thres' in t])
 
     # get the overhead table
-    #overhead = parse_overhead(args.csv_location, tools=['autosklearnThresholdout_scale05_ensemble0'])
+    #filename = 'overhead.csv'
+    #assert not os.path.exists(filename)
+    #overhead = parse_overhead(args.csv_location, tools=[t for t in df['tool'].unique()])
     #overhead = parse_overhead(args.csv_location, tools=['autosklearnStackingLatest_f50'])
     #overhead = parse_overhead(args.csv_location, tools=['autosklearnBBCEnsembleSelectionLatest_B_50_Nb_50'])
-    #overhead.to_csv('overhead.csv')
+    #overhead.to_csv(filename)
 
