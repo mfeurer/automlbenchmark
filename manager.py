@@ -46,8 +46,7 @@ logger.addHandler(ch)
 ENVIRONMENT_PATH = '/home/riverav/work/venv/bin/activate'
 
 # The base path where we expect all runs to reside
-#BASE_PATH = '/home/eggenspk/AUTOML_BENCHMARK/'
-BASE_PATH = '/home/riverav/AUTOML_BENCHMARK_TEST/'
+BASE_PATH = '/home/eggenspk/AUTOML_BENCHMARK/'
 
 # The remote location of the benchmark
 AUTOMLBENCHMARK = '/home/eggenspk/AUTOML_BENCHMARK/automlbenchmark_fork_BK'
@@ -57,7 +56,7 @@ AUTOMLBENCHMARK = '/home/eggenspk/AUTOML_BENCHMARK/automlbenchmark_fork_BK'
 MEMORY = {'12G': 12288, '32G': 32768}
 
 # Stablish a nested connection to kisba1
-USER = 'riverav'
+USER = 'feurerm'
 VM = paramiko.SSHClient()
 # this connection is using the private key of the system
 # if this fails to you, set this up properly
@@ -65,7 +64,7 @@ VM.load_system_host_keys()
 VM.set_missing_host_key_policy(paramiko.AutoAddPolicy())
 VM.connect(hostname='132.230.166.39', username=USER, look_for_keys=False)
 vmtransport = VM.get_transport()
-dest_addr = ('10.5.166.92', 22)  # kisbat
+dest_addr = ('10.5.166.222', 22)  # kis2bat2
 local_addr = ('132.230.166.39', 22)  # aadlogin
 vmchannel = vmtransport.open_channel("direct-tcpip", dest_addr, local_addr)
 
@@ -73,7 +72,7 @@ vmchannel = vmtransport.open_channel("direct-tcpip", dest_addr, local_addr)
 SSH = paramiko.SSHClient()
 SSH.load_system_host_keys()
 SSH.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-SSH.connect('10.5.166.92', username=USER, sock=vmchannel)
+SSH.connect(dest_addr[0], username=USER, sock=vmchannel)
 
 ############################################################################
 #                               FUNCTIONS
@@ -136,13 +135,13 @@ def create_singularity_image(framework: str) -> None:
     command = f"""
 #!/bin/bash
 #source {ENVIRONMENT_PATH}
-if [[ "$(docker images -q {author}/{framework.lower()}:{version}-stable 2> /dev/null)" == "" ]]; then
+if [[ "$(docker images -q {author}/{framework.lower()}:{version}-dev 2> /dev/null)" == "" ]]; then
     echo "Please prese yes/enter to create the docker image"
     python runbenchmark.py {framework} -m docker -s only
-    docker tag {author}/{framework.lower()}:{version}-{current_branch}  {author}/{framework.lower()}:{version}-stable
-    docker push  {author}/{framework.lower()}:{version}-stable
+    echo "Going to push to dockerhub"
+    docker push  {author}/{framework.lower()}:{version}-dev
 fi
-singularity pull frameworks/{framework}/{framework.lower()}_{version}-stable.sif docker://{author}/{framework.lower()}:{version}-stable
+singularity pull frameworks/{framework}/{framework.lower()}_{version}-dev.sif docker://{author}/{framework.lower()}:{version}-dev
     """
     with open(run_file, 'w') as f:
         f.write(command)
@@ -151,7 +150,7 @@ singularity pull frameworks/{framework}/{framework.lower()}_{version}-stable.sif
     ], shell=True, stdout=subprocess.PIPE)
 
     # Check if things went ok
-    sif_file = f"frameworks/{framework}/{framework.lower()}_{version}-stable.sif"
+    sif_file = f"frameworks/{framework}/{framework.lower()}_{version}-dev.sif"
     if not os.path.exists(sif_file):
         raise Exception(f"Failed to generate the sif file {sif_file}")
     return True
@@ -175,7 +174,7 @@ def validate_framework(framework: str) -> None:
         raise ValueError(f"We expect that the framework={framework} will be in the "
                          "{framework_file} file. This is required by automlbenchmark")
     version = valid_frameworks[framework]['version'].replace('-', '_')
-    sif_file = f"frameworks/{framework}/{framework.lower()}_{version}-stable.sif"
+    sif_file = f"frameworks/{framework}/{framework.lower()}_{version}-dev.sif"
 
     if not os.path.exists(sif_file):
         logger.warning("Trying to generate the singularity image. Please enter 'y' for yes"
@@ -403,7 +402,7 @@ def create_run_dir_area(run_dir: typing.Optional[str], args: typing.Any,
     remote_put('resources/frameworks.yaml', f"{run_dir}/frameworks.yaml")
 
     # Copy the SIF file
-    sif_file = f"frameworks/{args.framework}/{args.framework.lower()}_{version}-stable.sif"
+    sif_file = f"frameworks/{args.framework}/{args.framework.lower()}_{version}-dev.sif"
     src = f"{AUTOMLBENCHMARK}/frameworks/{args.framework}/{os.path.basename(sif_file)}"
     dst = f"{run_dir}/{os.path.basename(sif_file)}"
     remote_run(f"cp {src} {dst}")
@@ -488,6 +487,7 @@ def generate_run_file(
 echo "Running on HOSTNAME=$HOSTNAME with name $SLURM_JOB_NAME"
 export PATH=/usr/local/kislurm/singularity-3.5/bin/:$PATH
 source {ENVIRONMENT_PATH}
+which python
 cd {AUTOMLBENCHMARK}
 if [ -z "$SLURM_ARRAY_TASK_ID" ]; then export TMPDIR=/tmp/{framework}_{slugify(benchmark)}_{constraint}_{task}_{fold}_$SLURM_JOB_ID; else export TMPDIR=/tmp/{framework}_{slugify(benchmark)}_{constraint}_{task}_{fold}$SLURM_ARRAY_JOB_ID'_'$SLURM_ARRAY_TASK_ID; fi
 echo TMPDIR=$TMPDIR
@@ -908,12 +908,6 @@ def are_resource_available_to_run(partition: str, min_cpu_free=128, max_total_ru
         partition (str): which partition to launch and check
         min_cpu_free: only launch if cpu free
     """
-    #result = subprocess.run(
-    #    f"sfree",
-    #    shell=True,
-    #    stdout=subprocess.PIPE
-    #)
-    #result = result.stdout.decode('utf-8')
 
     # Also, account for a max total active runs
     cmd = f"squeue --format=\"%.50j\" --noheader -u {USER}"
@@ -921,10 +915,14 @@ def are_resource_available_to_run(partition: str, min_cpu_free=128, max_total_ru
     if len(total_runs) > max_total_runs:
         return False
 
-    for i, line in enumerate(remote_run('sfree')):
-        if partition in line and 'test' not in line:
-            status  = re.split('\s+',
-                               line.lstrip().rstrip())
+    if min_cpu_free <= 0:
+        return True
+
+    print('Checking partition %s' % partition)
+    sfree = remote_run('sfree')
+    for i, line in enumerate(sfree):
+        if partition in line.split() and 'test' not in line:
+            status  = re.split('\s+', line.lstrip().rstrip())
             return int(status[3]) > min_cpu_free
 
     return False
@@ -970,7 +968,9 @@ def launch_run(
     elif args.run_mode == 'single':
         timestamp = time.strftime("%Y.%m.%d-%H.%M.%S")
         for task in run_files:
-            if are_resource_available_to_run(partition=args.partition, min_cpu_free = 10) or True:
+            if are_resource_available_to_run(partition=args.partition,
+                                             min_cpu_free=args.min_cpu_free,
+                                             max_total_runs=args.max_total_runs):
                 name, ext = os.path.splitext(os.path.basename(task))
                 this_extra = extra + f" -p {args.partition} -t 0{max_hours}:00:00 --mem {args.memory} -c {args.cores} --job-name {name} -o {os.path.join(run_dir, 'logs', name + '_'+ timestamp + '.out')}"
                 _launch_sbatch_run(this_extra, task)
@@ -981,7 +981,9 @@ def launch_run(
     elif args.run_mode == 'interactive':
         timestamp = time.strftime("%Y.%m.%d-%H.%M.%S")
         while len(run_files) > 0:
-            if are_resource_available_to_run(partition=args.partition, min_cpu_free = 128):
+            if are_resource_available_to_run(partition=args.partition,
+                                             min_cpu_free=args.min_cpu_free,
+                                             max_total_runs=args.max_total_runs):
                 task = run_files.pop()
                 name, ext = os.path.splitext(os.path.basename(task))
                 this_extra = extra + f" -p {args.partition} -t 0{max_hours}:00:00 --mem {args.memory} -c {args.cores} --job-name {name} -o {os.path.join(run_dir, 'logs', name + '_'+ timestamp + '.out')}"
@@ -1162,7 +1164,7 @@ def get_job_status(
 def launch(
     jobs: typing.Dict,
     args: typing.Any,
-    run_dir: str
+    run_dir: str,
 ) -> None:
     """
     Takes a jobs dictionary and launches the remaining runs that have not yet been completed
@@ -1553,6 +1555,16 @@ if __name__ == "__main__":
         '--run_dir',
         help='The area from where to run'
     )
+    parser.add_argument(
+        '--min_cpu_free',
+        type=int,
+        default=200,
+    )
+    parser.add_argument(
+        '--max_total_runs',
+        type=int,
+        default=50,
+    )
 
     args = parser.parse_args()
     if args.verbose:
@@ -1561,7 +1573,7 @@ if __name__ == "__main__":
         logger.setLevel(logging.INFO)
 
     # Make sure singularity is properly set
-    if 'kisbat' in socket.gethostname():
+    if 'kis2bat2' in socket.gethostname():
         if 'kislurm/singularity-3.5' not in os.environ['PATH']:
             raise ValueError(
                 f"Singularity version to be used must be 3.5"
@@ -1576,7 +1588,8 @@ if __name__ == "__main__":
     # Do this before create run_dir_area so that we ONLY copy over the sif file
     # once over the network
     updated_files = subprocess.run(
-        f"rsync --update -avzhP --exclude '*/venv/*' --exclude '*/lib/*' -e \"ssh -p 22 -A {USER}@132.230.166.39 ssh\" {os.getcwd()}/* {USER}@10.5.166.92:{AUTOMLBENCHMARK}",
+        f"rsync --update -avzhP --exclude '*/venv/*' --exclude '*/lib/*' -e \"ssh -p 22 -A "
+        f"{USER}@{local_addr[0]} ssh\" {os.getcwd()}/* {USER}@{dest_addr[0]}:{AUTOMLBENCHMARK}",
         shell=True,
         stdout=subprocess.PIPE
     ).stdout.decode('utf-8')
