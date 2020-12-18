@@ -56,7 +56,7 @@ AUTOMLBENCHMARK = '/home/eggenspk/AUTOML_BENCHMARK/automlbenchmark_fork_BK'
 MEMORY = {'12G': 12288, '32G': 32768}
 
 # Stablish a nested connection to kisba1
-USER = 'feurerm'
+USER = 'riverav'
 VM = paramiko.SSHClient()
 # this connection is using the private key of the system
 # if this fails to you, set this up properly
