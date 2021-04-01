@@ -517,13 +517,16 @@ def generate_run_file(
     else:
         cmd = f"python runbenchmark.py {framework} {benchmark} {constraint} --task {task} --fold {fold} -m singularity --session {framework}_{benchmark}_{constraint}_{task}_{fold} -o {run_dir}/{framework}_{benchmark}_{constraint}_{task}_{fold} -u {run_dir}"
 
+    query_for_tmp = '${TMPDIR+x}'
     command = f"""#!/bin/bash
-#Setup the run
+# Setup the run
 echo "Running on HOSTNAME=$HOSTNAME with name $SLURM_JOB_NAME"
 export PATH=/usr/local/kislurm/singularity-3.5/bin/:$PATH
 source {ENVIRONMENT_PATH}
 cd {AUTOMLBENCHMARK}
-if [ -z "$SLURM_ARRAY_TASK_ID" ]; then export TMPDIR=/tmp/{framework}_{slugify(benchmark)}_{constraint}_{task}_{fold}_$SLURM_JOB_ID; else export TMPDIR=/tmp/{framework}_{slugify(benchmark)}_{constraint}_{task}_{fold}$SLURM_ARRAY_JOB_ID'_'$SLURM_ARRAY_TASK_ID; fi
+# If the temporary directory is set, honor it
+if [ -z {query_for_tmp} ]; then export TMPDIR='/tmp'; else echo "TMPDIR is set to '$TMPDIR'"; fi
+if [ -z "$SLURM_ARRAY_TASK_ID" ]; then export TMPDIR=$TMPDIR/{framework}_{slugify(benchmark)}_{constraint}_{task}_{fold}_$SLURM_JOB_ID; else export TMPDIR=$TMPDIR/{framework}_{slugify(benchmark)}_{constraint}_{task}_{fold}$SLURM_ARRAY_JOB_ID'_'$SLURM_ARRAY_TASK_ID; fi
 echo TMPDIR=$TMPDIR
 export XDG_CACHE_HOME=$TMPDIR
 echo XDG_CACHE_HOME=$XDG_CACHE_HOME
