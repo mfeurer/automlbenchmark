@@ -160,7 +160,7 @@ ln -sf {framework.lower()}_{version}-stable.sif {framework.lower()}_{version}-de
 # Compatibility with stable images
 ln -sf {framework.lower()}_{version}-stable.sif {framework.lower()}_{version}_stable.sif
 cd ../..
-rm temp_sif_name
+rm {temp_sif_name}
     """
     with open(run_file, 'w') as f:
         f.write(command)
