@@ -69,9 +69,10 @@ VM.load_system_host_keys()
 VM.set_missing_host_key_policy(paramiko.AutoAddPolicy())
 VM.connect(hostname='132.230.166.39', username=USER, look_for_keys=False)
 vmtransport = VM.get_transport()
-INTERNAL = '10.5.166.221'
-dest_addr = (INTERNAL, 22)  # kisbat
-local_addr = ('132.230.166.39', 22)  # aadlogin
+INTERNAL = '10.5.166.222'  # kis2bat2
+dest_addr = (INTERNAL, 22)
+EXTERNAL = '132.230.166.39'  # aadlogin
+local_addr = (EXTERNAL, 22)
 vmchannel = vmtransport.open_channel("direct-tcpip", dest_addr, local_addr)
 
 # ssh is effectively the nested global object to talk to
@@ -150,7 +151,7 @@ def create_singularity_image(framework: str) -> None:
 #source {ENVIRONMENT_PATH}
 if [[ "$(docker images -q {author}/{framework.lower()}:{version}-stable 2> /dev/null)" == "" ]]; then
     echo "Please prese yes/enter to create the docker image"
-    python runbenchmark.py {framework} -m docker -s only
+    python3 runbenchmark.py {framework} -m docker -s only
 fi
 docker save {author}/{framework.lower()}:{version}-dev -o {temp_sif_name}
 singularity build frameworks/{framework}/{framework.lower()}_{version}-stable.sif docker-archive://{temp_sif_name}
@@ -160,19 +161,18 @@ ln -sf {framework.lower()}_{version}-stable.sif {framework.lower()}_{version}-de
 # Compatibility with stable images
 ln -sf {framework.lower()}_{version}-stable.sif {framework.lower()}_{version}_stable.sif
 cd ../..
-rm {temp_sif_name}
+rm ${temp_sif_name}
     """
     with open(run_file, 'w') as f:
         f.write(command)
-    command = subprocess.run([
+    subprocess.run([
         f"bash {run_file}",
     ], shell=True, stdout=subprocess.PIPE)
 
     # Check if things went ok
-    sif_file = f"frameworks/{framework}/{framework.lower()}_{version}-stable.sif"
+    sif_file = f"frameworks/{framework}/{framework.lower()}_{version.lower()}-stable.sif"
     if not os.path.exists(sif_file):
         raise Exception(f"Failed to generate the sif file {sif_file}")
-    return True
 
 
 def validate_framework(framework: str) -> None:
@@ -215,7 +215,7 @@ def generate_metadata(run_dir: str, args: typing.Any, timestamp: str,
 
     Args:
         run_dir (str): where to generate this file
-        args (typing.Any): Namespace with args for this python script
+        args (typing.Any): Namespace with args for this python3 script
         timestamp (str): When the run was launched
     """
     constraint = f"{args.runtime}s{args.cores}c{args.memory}"
@@ -261,19 +261,6 @@ def remote_exists(directory: str) -> bool:
         return False
     else:
         return True
-
-
-def remote_glob(pattern: str) -> typing.List[str]:
-    logger.debug(f"[remote_glob] {pattern}")
-    stdin, stdout, stderr = SSH.exec_command(f"ls -d {pattern}")
-    stdout.channel.recv_exit_status()
-    stderr.channel.recv_exit_status()
-    errors = stderr.readlines()
-    files = stdout.readlines()
-    if any(['cannot access' in a for a in errors]):
-        return []
-    else:
-        return [f.rstrip() for f in files]
 
 
 def remote_makedirs(directory: str) -> bool:
@@ -391,7 +378,7 @@ def create_run_dir_area(run_dir: typing.Optional[str], args: typing.Any,
 
     Args:
         run_dir (str): where to create the run area
-        args (typing.Any): the namespace with the arguments to the python script
+        args (typing.Any): the namespace with the arguments to the python3 script
 
     Returns:
         run_dir (str): the area in which to run
@@ -513,9 +500,9 @@ def generate_run_file(
     run_file = f"{run_dir}/scripts/{framework}_{slugify(benchmark)}_{constraint}_{slugify(task)}_{fold}.sh"
 
     if 'openml' in task:
-        cmd = f"python runbenchmark.py {framework} {task} {constraint} --fold {fold} -m singularity --session {framework}_{slugify(benchmark)}_{constraint}_{slugify(task)}_{fold} -o {run_dir}/{framework}_{slugify(benchmark)}_{constraint}_{slugify(task)}_{fold} -u {run_dir}"
+        cmd = f"python3 runbenchmark.py {framework} {task} {constraint} --fold {fold} -m singularity --session {framework}_{slugify(benchmark)}_{constraint}_{slugify(task)}_{fold} -o {run_dir}/{framework}_{slugify(benchmark)}_{constraint}_{slugify(task)}_{fold} -u {run_dir}"
     else:
-        cmd = f"python runbenchmark.py {framework} {benchmark} {constraint} --task {task} --fold {fold} -m singularity --session {framework}_{benchmark}_{constraint}_{task}_{fold} -o {run_dir}/{framework}_{benchmark}_{constraint}_{task}_{fold} -u {run_dir}"
+        cmd = f"python3 runbenchmark.py {framework} {benchmark} {constraint} --task {task} --fold {fold} -m singularity --session {framework}_{benchmark}_{constraint}_{task}_{fold} -o {run_dir}/{framework}_{benchmark}_{constraint}_{task}_{fold} -u {run_dir}"
 
     query_for_tmp = '${TMPDIR+x}'
     command = f"""#!/bin/bash
@@ -523,6 +510,7 @@ def generate_run_file(
 echo "Running on HOSTNAME=$HOSTNAME with name $SLURM_JOB_NAME"
 export PATH=/usr/local/kislurm/singularity-3.5/bin/:$PATH
 source {ENVIRONMENT_PATH}
+which python3
 cd {AUTOMLBENCHMARK}
 # If the temporary directory is set, honor it
 if [ -z {query_for_tmp} ]; then export TMPDIR='/tmp'; else echo "TMPDIR is set to '$TMPDIR'"; fi
@@ -1210,7 +1198,7 @@ def get_job_status(
 def launch(
     jobs: typing.Dict,
     args: typing.Any,
-    run_dir: str
+    run_dir: str,
 ) -> None:
     """
     Takes a jobs dictionary and launches the remaining runs that have not yet been completed
@@ -1609,7 +1597,7 @@ if __name__ == "__main__":
         logger.setLevel(logging.INFO)
 
     # Make sure singularity is properly set
-    if 'kisbat' in socket.gethostname():
+    if 'kis2bat2' in socket.gethostname():
         if 'kislurm/singularity-3.5' not in os.environ['PATH']:
             raise ValueError(
                 f"Singularity version to be used must be 3.5"
@@ -1624,7 +1612,8 @@ if __name__ == "__main__":
     # Do this before create run_dir_area so that we ONLY copy over the sif file
     # once over the network
     updated_files = subprocess.run(
-        f"rsync --update -avzhP --exclude '*/venv/*' --exclude '*/lib/*' -e \"ssh -p 22 -A {USER}@132.230.166.39 ssh\" {os.getcwd()}/* {USER}@{INTERNAL}:{AUTOMLBENCHMARK}",
+        f"rsync --update -avzhP --exclude '*/venv/*' --exclude '*/lib/*' -e \"ssh -p 22 -A "
+        f"{USER}@{EXTERNAL} ssh\" {os.getcwd()}/* {USER}@{INTERNAL}:{AUTOMLBENCHMARK}",
         shell=True,
         stdout=subprocess.PIPE
     ).stdout.decode('utf-8')
