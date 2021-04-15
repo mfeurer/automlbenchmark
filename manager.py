@@ -943,13 +943,9 @@ def are_resource_available_to_run(partition: str, min_cpu_free=128, max_total_ru
         partition (str): which partition to launch and check
         min_cpu_free: only launch if cpu free
     """
-    return True
-    #result = subprocess.run(
-    #    f"sfree",
-    #    shell=True,
-    #    stdout=subprocess.PIPE
-    #)
-    #result = result.stdout.decode('utf-8')
+
+    if min_cpu_free <= 0:
+        return True
 
     # Also, account for a max total active runs
     cmd = f"squeue --format=\"%.50j\" --noheader -u {USER}"
@@ -957,10 +953,11 @@ def are_resource_available_to_run(partition: str, min_cpu_free=128, max_total_ru
     if len(total_runs) > max_total_runs:
         return False
 
+
+    print('Checking partition %s' % partition)
     for i, line in enumerate(remote_run('sfree')):
-        if partition in line and 'test' not in line:
-            status  = re.split('\s+',
-                               line.lstrip().rstrip())
+        if partition in line.split() and 'test' not in line:
+            status  = re.split('\s+', line.lstrip().rstrip())
             return int(status[3]) > min_cpu_free
 
     return False
@@ -1006,7 +1003,9 @@ def launch_run(
     elif args.run_mode == 'single':
         timestamp = time.strftime("%Y.%m.%d-%H.%M.%S")
         for task in run_files:
-            if are_resource_available_to_run(partition=args.partition, min_cpu_free = 10) or True:
+            if are_resource_available_to_run(partition=args.partition,
+                                             min_cpu_free=args.min_cpu_free,
+                                             max_total_runs=args.max_total_runs):
                 name, ext = os.path.splitext(os.path.basename(task))
                 this_extra = extra + f" -p {args.partition} -t 0{max_hours}:00:00 --mem {args.memory} -c {args.cores} --job-name {name} -o {os.path.join(run_dir, 'logs', name + '_'+ timestamp + '.out')}"
                 _launch_sbatch_run(this_extra, task)
@@ -1017,7 +1016,9 @@ def launch_run(
     elif args.run_mode == 'interactive':
         timestamp = time.strftime("%Y.%m.%d-%H.%M.%S")
         while len(run_files) > 0:
-            if are_resource_available_to_run(partition=args.partition, min_cpu_free = 128):
+            if are_resource_available_to_run(partition=args.partition,
+                                             min_cpu_free=args.min_cpu_free,
+                                             max_total_runs=args.max_total_runs):
                 task = run_files.pop()
                 name, ext = os.path.splitext(os.path.basename(task))
                 this_extra = extra + f" -p {args.partition} -t 0{max_hours}:00:00 --mem {args.memory} -c {args.cores} --job-name {name} -o {os.path.join(run_dir, 'logs', name + '_'+ timestamp + '.out')}"
@@ -1588,6 +1589,16 @@ if __name__ == "__main__":
     parser.add_argument(
         '--run_dir',
         help='The area from where to run'
+    )
+    parser.add_argument(
+        '--min_cpu_free',
+        type=int,
+        default=200,
+    )
+    parser.add_argument(
+        '--max_total_runs',
+        type=int,
+        default=50,
     )
 
     args = parser.parse_args()
